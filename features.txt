@@ -1,0 +1,142 @@
+Online Shopping System Features
+
+1. Customer Features
+------------------
+a) Authentication & Profile
+   - User registration and login
+   - Profile management
+   - Password change
+   - Address management
+   - Order history view
+
+b) Shopping Experience
+   - Browse products
+   - Search products
+   - Filter by category/price
+   - View product details
+   - Add to cart (draft orders)
+   - Update cart quantities
+   - Remove items from cart
+
+c) Order Management
+   - Place orders (converts draft to pending)
+   - View all personal orders
+   - Pay for orders (changes paid status to true)
+   - Cancel pending orders (changes fulfillment to cancelled)
+   - View order status and payment status
+
+2. Admin Features
+---------------
+a) User Management
+   - View all users
+   - Create/Edit/Delete users
+   - Manage user roles
+   - Reset passwords
+
+b) Product Management
+   - Add/Edit/Delete products
+   - Manage categories
+   - Update inventory
+   - Set prices
+   - Monitor stock levels
+   - Manage Suppliers
+   - Manage Sources (External Suppliers)
+   - Create import orders
+   - Track Supplier performance
+   - Track Source performance
+
+c) Order Management
+   - View all orders (pending, unfulfilled, fulfilled)
+   - Assign pending orders to delivery staff
+   - Revoke unfulfilled orders from delivery staff
+   - Monitor order fulfillment status
+   - Track payment status
+   - View order history
+   - Manage import orders
+   - Track Supplier deliveries
+   - Track Source deliveries
+
+d) System Management
+   - View system analytics
+   - Monitor performance
+   - Backup data
+   - Track sales metrics
+   - Monitor inventory levels
+   - Analyze Supplier performance
+   - Analyze Source performance
+   - Generate revenue reports
+   - View stock movement history
+
+3. Delivery Features
+-----------------
+a) Order Management
+   - View pending orders (can claim any)
+   - View assigned orders (unfulfilled and fulfilled)
+   - Update order fulfillment status
+   - Mark orders as fulfilled
+   - Change order status between unfulfilled and fulfilled
+   - View delivery history
+
+4. Order Status Flow
+-----------------
+a) Fulfillment Status
+   - Draft: Customer's cart (staff can't view)
+   - Pending: Order placed, no delivery assigned
+   - Unfulfilled: Delivery assigned, not yet delivered
+   - Fulfilled: Order delivered
+   - Cancelled: Order cancelled by customer
+   - Import: Special order type for stock replenishment
+
+b) Payment Status
+   - Paid: Boolean value (true/false)
+   - Independent of fulfillment status
+   - Can be updated at any fulfillment stage
+   - Set to false on order cancellation
+
+5. Stock Management
+----------------
+- Stock decreased when order moves from draft to pending
+- Stock restored when order is cancelled
+- Stock increased when import order is created
+- Stock levels tracked per product
+- Supplier stock tracking
+- Source stock tracking
+- Import order history
+- Stock movement analytics
+
+6. Analytics Features
+------------------
+a) Sales Analytics
+   - Revenue tracking
+   - Sales trends
+   - Product performance
+   - Category analysis
+   - Time-based metrics
+
+b) Inventory Analytics
+   - Stock level monitoring
+   - Stock movement tracking
+   - Low stock alerts
+   - Reorder point analysis
+   - Stock value calculation
+
+c) Supplier Analytics
+   - Supplier performance metrics
+   - Delivery time tracking
+   - Quality metrics
+   - Cost analysis
+   - Order fulfillment rates
+
+d) Source Analytics
+   - Source performance metrics
+   - Delivery time tracking
+   - Quality metrics
+   - Cost analysis
+   - Order fulfillment rates
+
+e) System Analytics
+   - User activity tracking
+   - System performance metrics
+   - Error rate monitoring
+   - Response time analysis
+   - Resource utilization

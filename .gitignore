@@ -1,0 +1,119 @@
+# Miscellaneous
+*.class
+*.log
+*.pyc
+*.swp
+.DS_Store
+.atom/
+.build/
+.buildlog/
+.history
+.svn/
+.swiftpm/
+migrate_working_dir/
+.env
+
+# IntelliJ related
+*.iml
+*.ipr
+*.iws
+.idea/
+
+# The .vscode folder contains launch configuration and tasks you configure in
+# VS Code which you may wish to be included in version control, so this line
+# is commented out by default.
+#.vscode/
+
+# Flutter/Dart/Pub related
+**/doc/api/
+**/ios/Flutter/.last_build_id
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+/build/
+
+# Symbolication related
+app.*.symbols
+
+# Obfuscation related
+app.*.map.json
+
+# Android Studio will place build artifacts here
+/android/app/debug
+/android/app/profile
+/android/app/release
+
+# Confidential and Sensitive Data
+# Environment and configuration files
+.env.*
+*.env
+config.json
+secrets.json
+credentials.json
+firebase-config.json
+google-services.json
+GoogleService-Info.plist
+
+# API Keys and Secrets
+*_key.json
+*_keys.json
+*_secret.json
+*_secrets.json
+*_token.json
+*_tokens.json
+
+# Local development settings
+local_settings.json
+dev_settings.json
+prod_settings.json
+staging_settings.json
+
+# Database files
+*.sqlite
+*.sqlite3
+*.db
+*.db-journal
+
+# Backup files
+*.bak
+*.backup
+*~
+*.swp
+*.swo
+
+# Certificate files
+*.pem
+*.key
+*.crt
+*.cer
+*.der
+*.p12
+*.pfx
+
+# Log files with sensitive data
+*_log.txt
+*_logs.txt
+debug.log
+error.log
+access.log
+
+# Temporary files
+tmp/
+temp/
+.tmp/
+.temp/
+
+# IDE specific files
+.project
+.classpath
+.settings/
+*.sublime-workspace
+*.sublime-project
+
+# Mobile specific
+ios/Runner/GoogleService-Info.plist
+android/app/google-services.json
+ios/Flutter/Debug.xcconfig
+ios/Flutter/Release.xcconfig

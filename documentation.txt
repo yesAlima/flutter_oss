@@ -1,0 +1,113 @@
+Online Shopping System Documentation
+
+1. System Architecture
+-------------------
+The system follows a Model-View-Controller (MVC) architecture pattern, implemented using Flutter and Firebase. The architecture is organized into distinct layers:
+
+- Models: Data structures and business logic
+- Views: User interface components
+- Controllers: Business logic and state management
+- Services: External service integrations
+- Routes: Navigation management
+- Middleware: Authentication and authorization
+
+2. Directory Structure
+--------------------
+/lib
+  /models         - Data structures and business logic
+  /views          - UI components and screens
+  /controllers    - State management and business logic
+  /services       - External service integrations
+  /routes         - Navigation configuration
+  /middleware     - Authentication and authorization
+  /widgets        - Reusable UI components
+  /utils          - Utility functions and constants
+
+3. Key Components
+---------------
+a) Authentication System
+   - Firebase Authentication integration
+   - Role-based access control (Customer, Admin, Delivery, Supplier)
+   - Session management
+   - Secure password handling
+
+b) Product Management
+   - Product CRUD operations
+   - Category management
+   - Inventory tracking
+   - Stock management
+   - Price management
+   - Supplier management
+   - Source (External Supplier) management
+   - Import order tracking
+
+c) Order System
+   - Shopping cart functionality (draft orders)
+   - Order processing with dual status tracking:
+     * Fulfillment status: draft → pending → unfulfilled → fulfilled
+     * Payment status: paid (boolean)
+   - Order cancellation
+   - Stock management on order status changes
+   - Delivery assignment and management
+   - Import orders for stock replenishment
+
+d) User Management
+   - User profiles
+   - Role management
+   - Account settings
+   - Address management
+   - Password management
+
+e) Analytics System
+   - Sales analytics
+   - Inventory analytics
+   - Supplier performance tracking
+   - Source (External Supplier) performance tracking
+   - Order fulfillment metrics
+   - Revenue tracking
+   - Stock level monitoring
+
+f) Supplier Management
+   - Supplier profiles
+   - Import order history
+   - Supplier performance metrics
+   - Stock replenishment tracking
+   - Purchase price management
+
+g) Source (External Supplier) Management
+   - Source profiles
+   - Source performance tracking
+   - Source order history
+   - Source relationship management
+   - Source pricing management
+
+4. Data Flow
+----------
+1. User Interaction:
+   - User performs an action in the View
+   - View notifies the Controller
+   - Controller processes the request
+
+2. Data Processing:
+   - Controller interacts with Models
+   - Models handle data operations
+   - Services manage external integrations
+
+3. Response:
+   - Controller updates the View
+   - View reflects changes to the user
+
+5. Security Features
+----------------
+- Firebase Authentication
+- Role-based access control
+- Secure data transmission
+- Input validation
+- Session management
+
+6. State Management
+----------------
+- GetX for state management
+- Reactive programming
+- Dependency injection
+- Service locator pattern

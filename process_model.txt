@@ -1,0 +1,182 @@
+Order Lifecycle and User Interactions
+
+1. Order Types and Status
+------------------------
+a) Fulfillment Status (Primary Order Status)
+   - Draft: Customer's shopping cart
+   - Pending: Order placed, awaiting delivery assignment
+   - Unfulfilled: Delivery assigned, in transit
+   - Fulfilled: Order delivered successfully
+   - Cancelled: Order cancelled by customer
+   - Import: Special order type for stock replenishment
+
+b) Payment Status (Secondary Status)
+   - Paid: Boolean value (true/false)
+   - Independent of fulfillment status
+   - Can be updated at any fulfillment stage
+   - Automatically set to false on cancellation
+
+2. Order Lifecycle Flow
+---------------------
+a) Draft Stage (Shopping Cart)
+   - Only visible to the customer who created it
+   - Staff cannot view draft orders
+   - Stock is not affected
+   - Can be modified freely by customer
+
+b) Pending Stage
+   - Triggered by customer placing order
+   - Stock is immediately decreased
+   - No delivery staff assigned
+   - Customer can:
+     * Pay for the order
+     * Cancel the order
+   - Admin can:
+     * View all pending orders
+     * Assign delivery staff
+   - Delivery staff can:
+     * View all pending orders
+     * Claim any pending order
+
+c) Unfulfilled Stage
+   - Triggered by delivery assignment
+   - Stock remains decreased
+   - Customer can:
+     * Pay for the order (if not paid)
+     * View order status
+   - Admin can:
+     * View all unfulfilled orders
+     * Revoke delivery assignment
+   - Delivery staff can:
+     * View only their assigned orders
+     * Mark order as fulfilled
+     * Change status back to unfulfilled
+
+d) Fulfilled Stage
+   - Triggered by delivery completion
+   - Stock remains decreased
+   - Customer can:
+     * Pay for the order (if not paid)
+     * View order status
+   - Admin can:
+     * View all fulfilled orders
+   - Delivery staff can:
+     * View only their fulfilled orders
+     * Change status back to unfulfilled
+
+e) Cancelled Stage
+   - Triggered by customer cancellation
+   - Stock is restored to original levels
+   - Payment status set to false
+   - Order exits the main lifecycle
+   - Customer can:
+     * View cancelled order
+   - Admin can:
+     * View all cancelled orders
+
+f) Import Stage
+   - Special order type for stock replenishment
+   - Created by admin only
+   - Includes:
+     * Source ID (external supplier information)
+     * Product quantities
+     * Purchase prices
+   - Stock is increased when order is created
+   - No delivery staff assignment needed
+   - No customer involvement
+   - Admin can:
+     * Create import orders
+     * View all import orders
+     * Track import history
+   - Mixed chronologically with regular orders
+   - Uses same reference number sequence
+   - No address required
+   - No payment status (always considered paid)
+
+3. Stock Management
+-----------------
+- Stock decreased when order moves from draft to pending
+- Stock restored when order is cancelled
+- Stock increased when import order is created
+- Stock levels tracked per product
+- Stock changes are immediate and automatic
+- Supplier stock tracking
+- Source stock tracking
+- Import order history
+- Stock movement analytics
+
+4. User Role Capabilities
+-----------------------
+a) Customer
+   - Create and manage draft orders (cart)
+   - Place orders (draft → pending)
+   - Pay for orders at any stage
+   - Cancel pending orders
+   - View all personal orders
+   - Track order status
+
+b) Admin
+   - View all non-draft orders
+   - Assign delivery staff to pending orders
+   - Revoke delivery assignments
+   - Monitor order statuses
+   - Track payment status
+   - View order history
+   - Create and manage import orders
+   - Track import history
+   - Manage Source relationships
+   - View analytics and reports
+   - Monitor Supplier performance
+   - Monitor Source performance
+   - Track stock movements
+   - Generate revenue reports
+
+c) Delivery Staff
+   - View all pending orders
+   - Claim pending orders
+   - View their assigned orders
+   - Update order fulfillment status
+   - Mark orders as fulfilled
+   - Change status between unfulfilled and fulfilled
+
+5. Important Notes
+----------------
+- Fulfillment and payment status are independent
+- Payment can be made at any fulfillment stage
+- Only pending orders can be cancelled
+- Cancellation affects both fulfillment and payment status
+- Stock management is automatic based on order status
+- Delivery staff can only view their assigned orders
+- Admin has full visibility of all non-draft orders
+- Import orders are special orders for stock management
+- Import orders use the same reference sequence as regular orders
+- Import orders are mixed chronologically with regular orders
+- Import orders don't require delivery staff or customer addresses
+- Supplier performance is tracked through import orders
+- Source performance is tracked through import orders
+- Analytics provide insights into system performance
+- Stock movements are tracked for all order types
+- Revenue reports include both sales and import data
+
+notes and constraint for implementation:
+- replace the existing "status" attribute with "fullfillment".
+- delivery should be able to view any "pending" orders and any "unfullfilled" or "fullfilled" that are assigned to them (they can't see other deliveries orders).
+- admin should be able to view all of the "pending", "unfullfilled" and "fullfilled" orders.
+- delivery users should be able to take any "pending" order.
+- admin can assign any "pending" order to any delivery staff.
+- admin can revoke any "unfullfulled" order from any delivery staff which results in the order returning to "pending".
+- delivery and delivery can change order status for "unfullfilled" to "fullfilled" and reverse.
+- customer can cancel their order in the "pending" status, which changes the fullfillment status to "cancelled" which kicks the order out of the other cycle.
+- once the order is changed from "draft" to "pending" the stock of the items ordered are immediatly decreased by the ordered quantity.
+- if the order happens to be "cancelled" the decrease stock is returned.
+
+now for the other part of the order status, the "paid", it is much simpler. It is totally unrelated to the "fullfillment" it is boolean value which is "true" when the customer has payed their order and "false" if not. you will need to search for the customer files so you can implement the customer side of the ordering process.
+
+notes and constraints for implementations:
+- the customer can place their orders via "Place Order" in their cart.
+- after the customer has place the order it is converted from "draft" to "pending" as described previously.
+- customer can view all of their orders.
+- customer have to options with their buttons with their "pending" orders "cancel" and "pay".
+- "pay" changes the order "paid" status to true (no need for actual payment gateway implementation).
+- "cancel" changes the order "fullfillment" to "cancelled" and the "paid" to false.
+- the only relation between the "fullfillment" and "paid" attribute is the order cancellation otherwise the customer can change their "paid" status from "false" to "true" at any "fullfillment" stage.

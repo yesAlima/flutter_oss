@@ -1,0 +1,51 @@
+Admin User:
+Email: admin@test.com
+Password: Admin123!
+
+Supplier Users:
+Email: supp1@test.com
+Password: Supplier123!
+
+Email: supp2@test.com
+Password: Supplier123!
+
+Email: supp3@test.com
+Password: Supplier123!
+
+Email: supp4@test.com
+Password: Supplier123!
+
+Delivery Users:
+Email: deliv1@test.com
+Password: Delivery123!
+
+Email: deliv2@test.com
+Password: Delivery123!
+
+Email: deliv3@test.com
+Password: Delivery123!
+
+Email: deliv4@test.com
+Password: Delivery123!
+
+Customer Users:
+Email: cust1@test.com
+Password: Customer123!
+
+Email: cust2@test.com
+Password: Customer123!
+
+Email: cust3@test.com
+Password: Customer123!
+
+Email: cust4@test.com
+Password: Customer123!
+
+Email: cust5@test.com
+Password: Customer123!
+
+Notes:
+- All users are created in Firebase Authentication
+- Each user has corresponding data in Firestore
+- Customers have test orders associated with their accounts
+- Firebase Auth users must be deleted manually through the Firebase Console 
