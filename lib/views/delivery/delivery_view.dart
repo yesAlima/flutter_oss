@@ -1,20 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:syncfusion_flutter_xlsio/xlsio.dart';
-import '../../services/auth_service.dart';
-import '../../routes/app_routes.dart';
-import 'delivery_orders_view.dart';
+import '../../controllers/delivery/delivery_controller.dart';
 import '../auth/logout_view.dart';
+import 'delivery_orders_view.dart';
 
-class DeliveryView extends StatefulWidget {
+class DeliveryView extends GetView<DeliveryController> {
   const DeliveryView({Key? key}) : super(key: key);
-
-  @override
-  State<DeliveryView> createState() => _DeliveryViewState();
-}
-
-class _DeliveryViewState extends State<DeliveryView> {
-  final _authService = Get.find<AuthService>();
 
   @override
   Widget build(BuildContext context) {
@@ -24,11 +15,11 @@ class _DeliveryViewState extends State<DeliveryView> {
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
-            onPressed: () => setState(() {}),
+            onPressed: controller.refresh,
           ),
           IconButton(
             icon: const Icon(Icons.person),
-            onPressed: () => Get.toNamed(AppRoutes.profile),
+            onPressed: () => Get.toNamed('/profile'),
           ),
           const LogoutView(),
         ],

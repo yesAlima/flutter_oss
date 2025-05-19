@@ -1,33 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import '../../services/auth_service.dart';
-import '../../routes/app_routes.dart';
+import '../../controllers/supplier/supplier_controller.dart';
+import '../auth/logout_view.dart';
 import 'supplier_orders_view.dart';
 import 'supplier_products_view.dart';
-import '../auth/logout_view.dart';
+import '../../routes/app_routes.dart';
 
-class SupplierView extends StatefulWidget {
+class SupplierView extends GetView<SupplierController> {
   const SupplierView({super.key});
-
-  @override
-  State<SupplierView> createState() => _SupplierViewState();
-}
-
-class _SupplierViewState extends State<SupplierView> with SingleTickerProviderStateMixin {
-  final _authService = Get.find<AuthService>();
-  late TabController _tabController;
-
-  @override
-  void initState() {
-    super.initState();
-    _tabController = TabController(length: 2, vsync: this);
-  }
-
-  @override
-  void dispose() {
-    _tabController.dispose();
-    super.dispose();
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -35,13 +15,13 @@ class _SupplierViewState extends State<SupplierView> with SingleTickerProviderSt
       appBar: AppBar(
         title: const Text('Supplier Dashboard'),
         bottom: TabBar(
-          controller: _tabController,
+          controller: controller.tabController,
           tabs: const [
             Tab(text: 'Orders'),
             Tab(text: 'Products'),
           ],
         ),
-        actions:  [
+        actions: [
           IconButton(
             icon: const Icon(Icons.person),
             onPressed: () => Get.toNamed(AppRoutes.profile),
@@ -50,7 +30,7 @@ class _SupplierViewState extends State<SupplierView> with SingleTickerProviderSt
         ],
       ),
       body: TabBarView(
-        controller: _tabController,
+        controller: controller.tabController,
         children: const [
           SupplierOrdersView(),
           SupplierProductsView(),

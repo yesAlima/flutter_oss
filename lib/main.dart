@@ -14,16 +14,9 @@ import 'services/product_service.dart';
 import 'services/order_service.dart';
 import 'services/source_service.dart';
 import 'firebase_options.dart';
-import 'controllers/auth_controller.dart';
-import 'controllers/category_controller.dart';
-import 'controllers/order_controller.dart';
-import 'controllers/product_controller.dart';
-import 'controllers/user_controller.dart';
-import 'middleware/auth_middleware.dart';
 import 'services/analytics_service.dart';
 import 'services/user_service.dart';
 import 'services/export_service.dart';
-import 'models/user_model.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -69,12 +62,6 @@ void main() async {
   Get.put<UserService>(userService, permanent: true);
   Get.put<OrderService>(orderService, permanent: true);
   Get.put<ExportService>(exportService, permanent: true);
-  // Register controllers after all services are registered
-  Get.put(AuthController(), permanent: true);
-  Get.put(CategoryController(), permanent: true);
-  Get.put(ProductController(), permanent: true);
-  Get.put(UserController(), permanent: true);
-  Get.put(OrderController(), permanent: true);
 
   runApp(const MyApp());
 }

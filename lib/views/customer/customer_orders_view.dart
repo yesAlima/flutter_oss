@@ -5,10 +5,8 @@ import 'package:intl/intl.dart';
 import '../../models/order_model.dart';
 import '../../models/product_model.dart';
 import '../../models/user_model.dart';
-import '../../services/order_service.dart';
-import '../../services/auth_service.dart';
-import '../../services/product_service.dart';
 import '../../routes/app_routes.dart';
+import '../../controllers/customer/customer_orders_controller.dart';
 
 class CustomerOrdersView extends StatefulWidget {
   const CustomerOrdersView({Key? key}) : super(key: key);
@@ -18,146 +16,45 @@ class CustomerOrdersView extends StatefulWidget {
 }
 
 class _CustomerOrdersViewState extends State<CustomerOrdersView> {
-  final _orderService = Get.find<OrderService>();
-  final _authService = Get.find<AuthService>();
-  final _productService = Get.find<ProductService>();
-  final RxList<OrderModel> _orders = <OrderModel>[].obs;
-  final RxBool _isLoading = true.obs;
-  OrderFulfillment? _selectedStatus;
-  Map<String, double> _orderTotalsCache = {};
+  final _controller = Get.put(CustomerOrdersController());
 
   @override
   void initState() {
     super.initState();
-    _loadOrders();
-  }
-
-  Future<void> _loadOrders() async {
-    _isLoading.value = true;
-    try {
-      final userId = _authService.currentUser!.id;
-      final orders = await _orderService.getOrders(fulfillment: _selectedStatus).first;
-      _orders.value = orders.where((order) => 
-        order.cid == userId && 
-        order.fulfillment != OrderFulfillment.draft
-      ).toList();
-      await _updateOrderTotalsCache();
-    } catch (e) {
-      Get.snackbar('Error', 'Failed to load orders');
-    } finally {
-      _isLoading.value = false;
-    }
-  }
-
-  Future<void> _updateOrderTotalsCache() async {
-    final Map<String, double> totals = {};
-    for (final order in _orders) {
-      final products = await _getProductsForOrder(order);
-      totals[order.id] = _getOrderTotal(order, products);
-    }
-    if (mounted) {
-      setState(() {
-        _orderTotalsCache = totals;
-      });
-    }
-  }
-
-  double _getOrderTotal(OrderModel order, Map<String, ProductModel> products) {
-    double total = 0;
-    for (var line in order.orderlines) {
-      final product = products[line.id];
-      if (product != null) {
-        total += product.price * line.quantity;
-      }
-    }
-    return total;
-  }
-
-  Future<Map<String, ProductModel>> _getProductsForOrder(OrderModel order) async {
-    final Map<String, ProductModel> products = {};
-    for (final line in order.orderlines) {
-      final product = await _productService.getProduct(line.id);
-      if (product != null) {
-        products[line.id] = product;
-      }
-    }
-    return products;
-  }
-
-  Color _getStatusColor(OrderFulfillment status) {
-    switch (status) {
-      case OrderFulfillment.pending:
-        return Colors.orange;
-      case OrderFulfillment.unfulfilled:
-        return Colors.blue;
-      case OrderFulfillment.fulfilled:
-        return Colors.green;
-      case OrderFulfillment.cancelled:
-        return Colors.red;
-      case OrderFulfillment.draft:
-        return Colors.grey;
-      case OrderFulfillment.import:
-        return Colors.purple;
-    }
-  }
-
-  String _getStatusText(OrderFulfillment status) {
-    switch (status) {
-      case OrderFulfillment.pending:
-        return 'Pending';
-      case OrderFulfillment.unfulfilled:
-        return 'Assigned to Delivery';
-      case OrderFulfillment.fulfilled:
-        return 'Delivered';
-      case OrderFulfillment.cancelled:
-        return 'Cancelled';
-      case OrderFulfillment.draft:
-        return 'Draft';
-      case OrderFulfillment.import:
-        return 'Import';
-    }
-  }
-
-  List<OrderModel> get filteredOrders {
-    return _orders.where((order) {
-      if (_selectedStatus != null && order.fulfillment != _selectedStatus) {
-        return false;
-      }
-      return true;
-    }).toList();
+    _controller.loadOrders();
   }
 
   Widget buildStatusFilter() {
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: Row(
+      child: Obx(() => Row(
         children: [
           FilterChip(
             label: const Text('All'),
-            selected: _selectedStatus == null,
+            selected: _controller.selectedStatus.value == null,
             onSelected: (selected) {
-              setState(() => _selectedStatus = null);
+              _controller.setStatus(null);
             },
           ),
           const SizedBox(width: 8),
-          ..._availableStatuses.map((status) {
+          ..._controller.availableStatuses.map((status) {
             return Padding(
               padding: const EdgeInsets.only(right: 8),
               child: FilterChip(
-                label: Text(_getStatusText(status)),
-                selected: _selectedStatus == status,
+                label: Text(_controller.getStatusText(status)),
+                selected: _controller.selectedStatus.value == status,
                 onSelected: (selected) {
-                  setState(() => _selectedStatus = selected ? status : null);
+                  _controller.setStatus(selected ? status : null);
                 },
-                backgroundColor: _getStatusColor(status).withAlpha(10),
-                selectedColor: _getStatusColor(status).withAlpha(30),
-                checkmarkColor: _getStatusColor(status),
+                backgroundColor: _controller.getStatusColor(status).withAlpha(10),
+                selectedColor: _controller.getStatusColor(status).withAlpha(30),
+                checkmarkColor: _controller.getStatusColor(status),
                 labelStyle: TextStyle(
-                  color: _selectedStatus == status 
-                      ? _getStatusColor(status)
+                  color: _controller.selectedStatus.value == status 
+                      ? _controller.getStatusColor(status)
                       : Colors.black87,
-                  fontWeight: _selectedStatus == status 
+                  fontWeight: _controller.selectedStatus.value == status 
                       ? FontWeight.bold 
                       : FontWeight.normal,
                 ),
@@ -165,31 +62,7 @@ class _CustomerOrdersViewState extends State<CustomerOrdersView> {
             );
           }),
         ],
-      ),
-    );
-  }
-
-  List<OrderFulfillment> get _availableStatuses => [
-    OrderFulfillment.pending,
-    OrderFulfillment.unfulfilled,
-    OrderFulfillment.fulfilled,
-    OrderFulfillment.cancelled,
-  ];
-
-  Widget _buildPaidBadge(bool isPaid) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: isPaid ? Colors.green.shade100 : Colors.red.shade100,
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Text(
-        isPaid ? 'Paid' : 'Unpaid',
-        style: TextStyle(
-          color: isPaid ? Colors.green : Colors.red,
-          fontWeight: FontWeight.w500,
-        ),
-      ),
+      )),
     );
   }
 
@@ -209,12 +82,12 @@ class _CustomerOrdersViewState extends State<CustomerOrdersView> {
         children: [
           buildStatusFilter(),
           Expanded(
-            child: Obx(() => _isLoading.value
+            child: Obx(() => _controller.isLoading.value
                 ? const Center(child: CircularProgressIndicator())
                 : ListView.builder(
-                    itemCount: filteredOrders.length,
+                    itemCount: _controller.filteredOrders.length,
                     itemBuilder: (context, index) {
-                      final order = filteredOrders[index];
+                      final order = _controller.filteredOrders[index];
                       return Card(
                         margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                         child: ListTile(
@@ -223,23 +96,23 @@ class _CustomerOrdersViewState extends State<CustomerOrdersView> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                'Status: ${_getStatusText(order.fulfillment)}',
+                                'Status: ${_controller.getStatusText(order.fulfillment)}',
                                 style: TextStyle(
-                                  color: _getStatusColor(order.fulfillment),
+                                  color: _controller.getStatusColor(order.fulfillment),
                                   fontWeight: FontWeight.w500,
                                 ),
                               ),
                               Row(
                                 children: [
                                   if (order.fulfillment != OrderFulfillment.cancelled && order.paid != null)
-                                    _buildPaidBadge(order.paid!),
+                                    _controller.buildPaidBadge(order.paid!),
                                   const SizedBox(width: 8),
                                   FutureBuilder<Map<String, ProductModel>>(
-                                    future: _getProductsForOrder(order),
+                                    future: _controller.getProductsForOrder(order),
                                     builder: (context, snapshot) {
                                       if (!snapshot.hasData) return const SizedBox.shrink();
                                       final products = snapshot.data!;
-                                      final total = _getOrderTotal(order, products);
+                                      final total = _controller.getOrderTotal(order, products);
                                       return Text(
                                         'Total: ${total.toStringAsFixed(3)} BD',
                                         style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
@@ -312,26 +185,55 @@ class _CustomerOrdersViewState extends State<CustomerOrdersView> {
       'paid': true,
     });
     Get.snackbar('Payment', 'Order #${order.ref ?? order.id} marked as paid.');
-    await _loadOrders();
+    _controller.loadOrders();
   }
 
   Future<void> _cancelOrder(OrderModel order) async {
-    await FirebaseFirestore.instance.collection('orders').doc(order.id).update({
-      'paid': false,
-      'fulfillment': 'cancelled',
-    });
+    await _controller.cancelOrder(order.id);
     Get.snackbar('Order Cancelled', 'Order #${order.ref ?? order.id} has been cancelled.');
-    await _loadOrders();
   }
 
   Future<void> _changeOrderAddress(OrderModel order) async {
-    final newAddress = await Get.toNamed('/customer/addresses', arguments: order);
-    if (newAddress != null) {
+    final addresses = await _controller.getCustomerAddresses();
+    if (addresses.isEmpty) {
+      Get.snackbar('Error', 'No addresses found. Please add an address first.');
+      return;
+    }
+
+    final selectedAddress = await showDialog<AddressModel>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Select Delivery Address'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: ListView.builder(
+            shrinkWrap: true,
+            itemCount: addresses.length,
+            itemBuilder: (context, index) {
+              final address = addresses[index];
+              return ListTile(
+                title: Text(address.building),
+                subtitle: Text(address.block),
+                onTap: () => Navigator.pop(context, address),
+              );
+            },
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+        ],
+      ),
+    );
+
+    if (selectedAddress != null) {
       await FirebaseFirestore.instance.collection('orders').doc(order.id).update({
-        'address': newAddress.toMap(),
+        'address': selectedAddress.toMap(),
       });
       Get.snackbar('Success', 'Address updated for this order');
-      await _loadOrders();
+      _controller.loadOrders();
     }
   }
 
@@ -424,35 +326,6 @@ class _CustomerOrdersViewState extends State<CustomerOrdersView> {
           ),
         )),
       ],
-    );
-  }
-
-  Widget _buildCustomerName(String customerId) {
-    return FutureBuilder<UserModel?>(
-      future: _authService.getUser(customerId),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Text('Loading customer...');
-        }
-        if (snapshot.hasError) {
-          return const Text('Error loading customer');
-        }
-        final customer = snapshot.data;
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Customer: ${customer?.name ?? 'Unknown'}',
-              style: const TextStyle(fontSize: 14),
-            ),
-            if (customer?.phone != null && customer!.phone.isNotEmpty)
-              Text(
-                '+973 ${customer.phone}',
-                style: const TextStyle(fontSize: 12, color: Colors.grey),
-              ),
-          ],
-        );
-      },
     );
   }
 } 

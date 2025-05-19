@@ -3,7 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 class ProductModel {
   final String id;
   final String name;
-  final String description;
+  final String? description;
   final double price;
   final int stock;
   final int? alert;
@@ -14,7 +14,7 @@ class ProductModel {
   ProductModel({
     required this.id,
     required this.name,
-    required this.description,
+    this.description,
     required this.price,
     required this.stock,
     this.alert,
@@ -28,7 +28,7 @@ class ProductModel {
     return ProductModel(
       id: doc.id,
       name: data['name'] ?? '',
-      description: data['description'] ?? '',
+      description: data['description'],
       price: (data['price'] as num).toDouble(),
       stock: data['stock'] ?? 0,
       alert: data['alert'],

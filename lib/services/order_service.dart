@@ -1,12 +1,11 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:get/get.dart';
-import 'package:flutter/foundation.dart';
 import '../models/order_model.dart';
 import '../models/user_model.dart';
-import 'auth_service.dart';
 import 'product_service.dart';
 import 'user_service.dart';
+import '../routes/app_routes.dart';
 
 class OrderService extends GetxService {
   final FirebaseFirestore _firestore;
@@ -91,7 +90,7 @@ class OrderService extends GetxService {
     }
     
     return query
-        .orderBy('orderedAt', descending: true)
+        .orderBy('ref', descending: true)
         .snapshots()
         .map((snapshot) => snapshot.docs
             .map((doc) => OrderModel.fromFirestore(doc))
@@ -102,7 +101,7 @@ class OrderService extends GetxService {
     return _firestore
         .collection(_collection)
         .where('fulfillment', isEqualTo: OrderFulfillment.pending.toString().split('.').last)
-        .orderBy('orderedAt', descending: true)
+        .orderBy('ref', descending: true)
         .snapshots()
         .map((snapshot) => snapshot.docs
             .map((doc) => OrderModel.fromFirestore(doc))
@@ -113,8 +112,8 @@ class OrderService extends GetxService {
     final order = await getOrder(orderId);
     if (order == null) throw Exception('Order not found');
     
-    if (order.fulfillment != OrderFulfillment.pending) {
-      throw Exception('Can only assign delivery to pending orders');
+    if (order.fulfillment != OrderFulfillment.pending && order.fulfillment != OrderFulfillment.unfulfilled) {
+      throw Exception('Can only assign delivery to pending or unfulfilled orders');
     }
 
     await _firestore.collection(_collection).doc(orderId).update({
@@ -137,6 +136,25 @@ class OrderService extends GetxService {
     });
   }
 
+  Future<void> _returnStockForOrder(OrderModel order) async {
+    for (var line in order.orderlines) {
+      await _productService.increaseStock(line.id, line.quantity);
+    }
+  }
+
+  Future<void> cancelOrder(String orderId) async {
+    final order = await getOrder(orderId);
+    if (order == null) throw Exception('Order not found');
+
+    // Return stock for cancelled orders
+    await _returnStockForOrder(order);
+
+    await _firestore.collection(_collection).doc(orderId).update({
+      'fulfillment': OrderFulfillment.cancelled.toString().split('.').last,
+      'paid': false,
+    });
+  }
+
   Future<void> updateFulfillment(String orderId, OrderFulfillment newFulfillment) async {
     final order = await getOrder(orderId);
     if (order == null) throw Exception('Order not found');
@@ -147,12 +165,8 @@ class OrderService extends GetxService {
     }
 
     // Handle stock updates for cancelled orders
-    if (newFulfillment == OrderFulfillment.cancelled && 
-        order.fulfillment != OrderFulfillment.cancelled) {
-      // Return stock for cancelled orders
-      for (var line in order.orderlines) {
-        await _productService.increaseStock(line.id, line.quantity);
-      }
+    if (newFulfillment == OrderFulfillment.cancelled && order.fulfillment != OrderFulfillment.cancelled) {
+      await _returnStockForOrder(order);
     }
 
     await _firestore.collection(_collection).doc(orderId).update({
@@ -210,26 +224,11 @@ class OrderService extends GetxService {
     await _firestore.collection(_collection).doc(orderId).update(order.toMap());
   }
 
-  Future<void> cancelOrder(String orderId) async {
-    final order = await getOrder(orderId);
-    if (order == null) throw Exception('Order not found');
-
-    // Return stock for cancelled orders
-    for (var line in order.orderlines) {
-      await _productService.increaseStock(line.id, line.quantity);
-    }
-
-    await _firestore.collection(_collection).doc(orderId).update({
-      'fulfillment': OrderFulfillment.cancelled.toString().split('.').last,
-      'paid': false,
-    });
-  }
-
   Stream<List<OrderModel>> getCustomerOrders(String customerId) {
     return _firestore
         .collection(_collection)
         .where('cid', isEqualTo: customerId)
-        .orderBy('orderedAt', descending: true)
+        .orderBy('ref', descending: true)
         .snapshots()
         .map((snapshot) => snapshot.docs
             .map((doc) => OrderModel.fromFirestore(doc))
@@ -240,7 +239,7 @@ class OrderService extends GetxService {
     try {
       final snapshot = await _firestore
           .collection(_collection)
-          .orderBy('orderedAt', descending: true)
+          .orderBy('ref', descending: true)
           .get();
       return snapshot.docs
           .map((doc) => OrderModel.fromFirestore(doc))
@@ -304,15 +303,25 @@ class OrderService extends GetxService {
     final draftOrder = await getOrCreateDraftOrder();
     final orderlines = List<OrderLine>.from(draftOrder.orderlines);
     
+    // Get product price
+    final product = await _productService.getProduct(productId);
+    if (product == null) throw Exception('Product not found');
+    final price = product.price * quantity;
+    
     // Check if product already exists in order
     final existingIndex = orderlines.indexWhere((line) => line.id == productId);
     if (existingIndex >= 0) {
       orderlines[existingIndex] = OrderLine(
         id: productId,
         quantity: orderlines[existingIndex].quantity + quantity,
+        price: price,
       );
     } else {
-      orderlines.add(OrderLine(id: productId, quantity: quantity));
+      orderlines.add(OrderLine(
+        id: productId,
+        quantity: quantity,
+        price: price,
+      ));
     }
 
     await _firestore.collection(_collection).doc(draftOrder.id).update({
@@ -324,12 +333,21 @@ class OrderService extends GetxService {
     final draftOrder = await getOrCreateDraftOrder();
     final orderlines = List<OrderLine>.from(draftOrder.orderlines);
     
+    // Get product price
+    final product = await _productService.getProduct(productId);
+    if (product == null) throw Exception('Product not found');
+    final price = product.price * quantity;
+    
     if (quantity <= 0) {
       orderlines.removeWhere((line) => line.id == productId);
     } else {
       final existingIndex = orderlines.indexWhere((line) => line.id == productId);
       if (existingIndex >= 0) {
-        orderlines[existingIndex] = OrderLine(id: productId, quantity: quantity);
+        orderlines[existingIndex] = OrderLine(
+          id: productId,
+          quantity: quantity,
+          price: price,
+        );
       }
     }
 
@@ -368,8 +386,26 @@ class OrderService extends GetxService {
       throw Exception('Please select a delivery address before placing the order');
     }
 
-    // Generate a unique reference number and timestamp
-    final ref = DateTime.now().millisecondsSinceEpoch;
+    // Decrease stock for all items in the order
+    for (var line in draftOrder.orderlines) {
+      await _productService.decreaseStock(line.id, line.quantity);
+    }
+
+    // Get the latest order number (ref) by fetching latest 20 orders and filtering in Dart
+    final latestOrdersSnapshot = await _firestore
+        .collection(_collection)
+        .orderBy('ref', descending: true)
+        .limit(20)
+        .get();
+    final nonDraftOrders = latestOrdersSnapshot.docs
+        .map((doc) => OrderModel.fromFirestore(doc))
+        .where((order) => order.fulfillment != OrderFulfillment.draft)
+        .toList();
+    int ref = 1;
+    if (nonDraftOrders.isNotEmpty) {
+      ref = (nonDraftOrders.first.ref ?? 0) + 1;
+    }
+
     final orderedAt = DateTime.now();
 
     // Update the order to pending state with ref and orderedAt
@@ -386,6 +422,9 @@ class OrderService extends GetxService {
       'fulfillment': 'draft',
       'paid': false,
     });
+
+    // Navigate to home page
+    Get.offAllNamed(AppRoutes.customer);
 
     return draftOrder.copyWith(
       fulfillment: OrderFulfillment.pending,
@@ -425,7 +464,6 @@ class OrderService extends GetxService {
       throw Exception('Only admins and suppliers can create import orders');
     }
 
-    print('Current user role: \x1B[32m${userModel.role}\x1B[0m, isAdmin: ${userModel.isAdmin}, isSupplier: ${userModel.isSupplier}');
 
     // Count all non-draft orders to determine the next ref number
     final nonDraftOrdersSnapshot = await _firestore
@@ -467,7 +505,7 @@ class OrderService extends GetxService {
     return _firestore
         .collection(_collection)
         .where('fulfillment', isEqualTo: OrderFulfillment.import.toString().split('.').last)
-        .orderBy('orderedAt', descending: true)
+        .orderBy('ref', descending: true)
         .snapshots()
         .map((snapshot) => snapshot.docs
             .map((doc) => OrderModel.fromFirestore(doc))

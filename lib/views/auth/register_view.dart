@@ -1,84 +1,43 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:flutter/services.dart';
 // import 'package:provider/provider.dart'; // Removed, not needed
-import '../../services/auth_service.dart';
-import '../../services/user_service.dart';
-import '../../models/user_model.dart';
+import '../../controllers/auth/register_controller.dart';
 
-class RegisterView extends StatefulWidget {
-  const RegisterView({super.key});
-
+class PhoneNumberFormatter extends TextInputFormatter {
   @override
-  State<RegisterView> createState() => _RegisterViewState();
-}
+  TextEditingValue formatEditUpdate(TextEditingValue oldValue, TextEditingValue newValue) {
+    // If the field is empty, only allow 3 or 6
+    if (newValue.text.isEmpty) {
+      return newValue;
+    }
 
-class _RegisterViewState extends State<RegisterView> {
-  final _formKey = GlobalKey<FormState>();
-  final _userService = UserService();
-  bool _isLoading = false;
-  bool _obscurePassword = true;
-  bool _obscureConfirmPassword = true;
+    // If the first character is not 3 or 6, return the old value
+    if (newValue.text.length == 1 && !['3', '6'].contains(newValue.text[0])) {
+      return oldValue;
+    }
 
-  final _nameController = TextEditingController();
-  final _emailController = TextEditingController();
-  final _passwordController = TextEditingController();
-  final _confirmPasswordController = TextEditingController();
-  final _phoneController = TextEditingController();
-
-  @override
-  void dispose() {
-    _nameController.dispose();
-    _emailController.dispose();
-    _passwordController.dispose();
-    _confirmPasswordController.dispose();
-    _phoneController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _register() async {
-    if (!_formKey.currentState!.validate()) return;
-
-    setState(() => _isLoading = true);
-    try {
-      final authService = Get.find<AuthService>();
-      final user = UserModel(
-        id: '', // Will be set by Firestore
-        name: _nameController.text,
-        email: _emailController.text,
-        role: UserRole.customer.toString().split('.').last,
-        isActive: true,
-        phone: _phoneController.text,
-      );
-
-      await _userService.createUser(user, _passwordController.text);
-      await authService.sendEmailVerification();
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Registration successful! Please check your email to verify your account.',
-            ),
-            backgroundColor: Colors.green,
-          ),
-        );
-        Get.offAllNamed('/login');
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
+    // If we already have a first digit (3 or 6), only allow digits for the rest
+    if (oldValue.text.isNotEmpty && ['3', '6'].contains(oldValue.text[0])) {
+      if (newValue.text.length > oldValue.text.length) {
+        final newChar = newValue.text[newValue.text.length - 1];
+        if (!RegExp(r'[0-9]').hasMatch(newChar)) {
+          return oldValue;
+        }
       }
     }
+
+    // Limit to 8 digits
+    if (newValue.text.length > 8) {
+      return oldValue;
+    }
+
+    return newValue;
   }
+}
+
+class RegisterView extends GetView<RegisterController> {
+  const RegisterView({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -86,12 +45,12 @@ class _RegisterViewState extends State<RegisterView> {
       appBar: AppBar(
         title: const Text('Register'),
       ),
-      body: _isLoading
+      body: Obx(() => controller.isLoading.value
           ? const Center(child: CircularProgressIndicator())
           : SingleChildScrollView(
               padding: const EdgeInsets.all(16),
               child: Form(
-                key: _formKey,
+                key: controller.formKey,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
@@ -103,32 +62,38 @@ class _RegisterViewState extends State<RegisterView> {
                     ),
                     const SizedBox(height: 32),
                     TextFormField(
-                      controller: _nameController,
+                      controller: controller.nameController,
                       decoration: const InputDecoration(
-                        labelText: 'Name',
+                        labelText: 'Name *',
                         border: OutlineInputBorder(),
                         prefixIcon: Icon(Icons.person),
                       ),
                       validator: (value) {
                         if (value == null || value.isEmpty) {
-                          return 'Please enter your name';
+                          return 'Name is required';
+                        }
+                        if (value.length < 2) {
+                          return 'Name must be at least 2 characters';
                         }
                         return null;
                       },
                     ),
                     const SizedBox(height: 16),
                     TextFormField(
-                      controller: _phoneController,
+                      controller: controller.phoneController,
                       decoration: const InputDecoration(
-                        labelText: 'Phone Number',
+                        labelText: 'Phone *',
                         border: OutlineInputBorder(),
                         prefixIcon: Icon(Icons.phone),
                         hintText: '3XXXXXXX or 6XXXXXXX',
                       ),
                       keyboardType: TextInputType.number,
+                      inputFormatters: [
+                        PhoneNumberFormatter(),
+                      ],
                       validator: (value) {
                         if (value == null || value.isEmpty) {
-                          return 'Please enter your phone number';
+                          return 'Phone number is required';
                         }
                         if (!RegExp(r'^[36]\d{7}$').hasMatch(value)) {
                           return 'Phone number must be 8 digits starting with 3 or 6';
@@ -138,16 +103,16 @@ class _RegisterViewState extends State<RegisterView> {
                     ),
                     const SizedBox(height: 16),
                     TextFormField(
-                      controller: _emailController,
+                      controller: controller.emailController,
                       decoration: const InputDecoration(
-                        labelText: 'Email',
+                        labelText: 'Email *',
                         border: OutlineInputBorder(),
                         prefixIcon: Icon(Icons.email),
                       ),
                       keyboardType: TextInputType.emailAddress,
                       validator: (value) {
                         if (value == null || value.isEmpty) {
-                          return 'Please enter your email';
+                          return 'Email is required';
                         }
                         if (!GetUtils.isEmail(value)) {
                           return 'Please enter a valid email';
@@ -157,61 +122,66 @@ class _RegisterViewState extends State<RegisterView> {
                     ),
                     const SizedBox(height: 16),
                     TextFormField(
-                      controller: _passwordController,
+                      controller: controller.passwordController,
                       decoration: InputDecoration(
-                        labelText: 'Password',
+                        labelText: 'Password *',
                         border: const OutlineInputBorder(),
                         prefixIcon: const Icon(Icons.lock),
                         suffixIcon: IconButton(
                           icon: Icon(
-                            _obscurePassword
+                            controller.obscurePassword.value
                                 ? Icons.visibility
                                 : Icons.visibility_off,
                           ),
-                          onPressed: () {
-                            setState(() {
-                              _obscurePassword = !_obscurePassword;
-                            });
-                          },
+                          onPressed: controller.togglePasswordVisibility,
                         ),
+                        hintText: 'At least 8 characters with uppercase, lowercase, number and special character',
                       ),
-                      obscureText: _obscurePassword,
+                      obscureText: controller.obscurePassword.value,
                       validator: (value) {
                         if (value == null || value.isEmpty) {
-                          return 'Please enter a password';
+                          return 'Password is required';
                         }
-                        if (value.length < 6) {
-                          return 'Password must be at least 6 characters';
+                        if (value.length < 8) {
+                          return 'Password must be at least 8 characters';
+                        }
+                        if (!value.contains(RegExp(r'[A-Z]'))) {
+                          return 'Password must contain at least one uppercase letter';
+                        }
+                        if (!value.contains(RegExp(r'[a-z]'))) {
+                          return 'Password must contain at least one lowercase letter';
+                        }
+                        if (!value.contains(RegExp(r'[0-9]'))) {
+                          return 'Password must contain at least one number';
+                        }
+                        if (!value.contains(RegExp(r'[!@#$%^&*(),.?":{}|<>]'))) {
+                          return 'Password must contain at least one special character';
                         }
                         return null;
                       },
                     ),
                     const SizedBox(height: 16),
                     TextFormField(
-                      controller: _confirmPasswordController,
+                      controller: controller.confirmPasswordController,
                       decoration: InputDecoration(
-                        labelText: 'Confirm Password',
+                        labelText: 'Confirm Password *',
                         border: const OutlineInputBorder(),
                         prefixIcon: const Icon(Icons.lock),
                         suffixIcon: IconButton(
                           icon: Icon(
-                            _obscureConfirmPassword
+                            controller.obscureConfirmPassword.value
                                 ? Icons.visibility
                                 : Icons.visibility_off,
                           ),
-                          onPressed: () {
-                            setState(() {
-                              _obscureConfirmPassword = !_obscureConfirmPassword;
-                            });
-                          },
+                          onPressed: controller.toggleConfirmPasswordVisibility,
                         ),
                       ),
-                      obscureText: _obscureConfirmPassword,
+                      obscureText: controller.obscureConfirmPassword.value,
                       validator: (value) {
                         if (value == null || value.isEmpty) {
                           return 'Please confirm your password';
                         }
-                        if (value != _passwordController.text) {
+                        if (value != controller.passwordController.text) {
                           return 'Passwords do not match';
                         }
                         return null;
@@ -219,7 +189,15 @@ class _RegisterViewState extends State<RegisterView> {
                     ),
                     const SizedBox(height: 24),
                     ElevatedButton(
-                      onPressed: _register,
+                      onPressed: controller.register,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Theme.of(context).primaryColor,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
                       child: const Text('Register'),
                     ),
                     const SizedBox(height: 16),
@@ -230,7 +208,7 @@ class _RegisterViewState extends State<RegisterView> {
                   ],
                 ),
               ),
-            ),
+            )),
     );
   }
 } 

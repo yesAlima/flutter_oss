@@ -1,172 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:fl_chart/fl_chart.dart';
-import '../../services/analytics_service.dart';
+import '../../controllers/admin/admin_analytics_controller.dart';
 import '../../widgets/analytics_card.dart';
 
-class AdminAnalyticsView extends StatefulWidget {
+class AdminAnalyticsView extends GetView<AdminAnalyticsController> {
   const AdminAnalyticsView({Key? key}) : super(key: key);
-
-  @override
-  State<AdminAnalyticsView> createState() => _AdminAnalyticsViewState();
-}
-
-class _AdminAnalyticsViewState extends State<AdminAnalyticsView> {
-  final _analyticsService = Get.find<AnalyticsService>();
-  bool _isLoading = false;
-  Map<String, dynamic> _analytics = {};
-  String _selectedTimeRange = 'Last 30 Days';
-  final List<String> _timeRanges = ['Last 7 Days', 'Last 30 Days', 'Last 90 Days', 'Last Year'];
-
-  @override
-  void initState() {
-    super.initState();
-    _loadAnalytics();
-  }
-
-  Future<void> _loadAnalytics() async {
-    setState(() => _isLoading = true);
-    try {
-      final DateTime endDate = DateTime.now();
-      DateTime startDate;
-      
-      switch (_selectedTimeRange) {
-        case 'Last 7 Days':
-          startDate = endDate.subtract(const Duration(days: 7));
-          break;
-        case 'Last 30 Days':
-          startDate = endDate.subtract(const Duration(days: 30));
-          break;
-        case 'Last 90 Days':
-          startDate = endDate.subtract(const Duration(days: 90));
-          break;
-        case 'Last Year':
-          startDate = endDate.subtract(const Duration(days: 365));
-          break;
-        default:
-          startDate = endDate.subtract(const Duration(days: 30));
-      }
-
-      final analytics = await _analyticsService.getSalesAnalytics(
-        startDate: startDate,
-        endDate: endDate,
-      );
-      setState(() => _analytics = analytics);
-    } catch (e) {
-      Get.snackbar(
-        'Error',
-        'Failed to load analytics: $e',
-        snackPosition: SnackPosition.BOTTOM,
-      );
-    } finally {
-      setState(() => _isLoading = false);
-    }
-  }
-
-  Widget _buildTimeRangeSelector() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: DropdownButton<String>(
-        value: _selectedTimeRange,
-        isExpanded: true,
-        items: _timeRanges.map((String range) {
-          return DropdownMenuItem<String>(
-            value: range,
-            child: Text(range),
-          );
-        }).toList(),
-        onChanged: (String? newValue) {
-          if (newValue != null) {
-            setState(() => _selectedTimeRange = newValue);
-            _loadAnalytics();
-          }
-        },
-      ),
-    );
-  }
-
-  Widget _buildSalesChart() {
-    final salesData = _analytics['salesByDay'] as Map<String, dynamic>? ?? {};
-    if (salesData.isEmpty) {
-      return const Center(child: Text('No sales data available'));
-    }
-    // Sort by date
-    final sortedKeys = salesData.keys.toList()
-      ..sort((a, b) => DateTime.parse(a).compareTo(DateTime.parse(b)));
-    final List<FlSpot> spots = [];
-    final List<String> labels = [];
-    for (int i = 0; i < sortedKeys.length; i++) {
-      final date = DateTime.parse(sortedKeys[i]);
-      spots.add(FlSpot(i.toDouble(), salesData[sortedKeys[i]].toDouble()));
-      labels.add('${date.month}/${date.day}');
-    }
-    return Container(
-      height: 200,
-      padding: const EdgeInsets.all(16),
-      child: LineChart(
-        LineChartData(
-          gridData: const FlGridData(show: true),
-          titlesData: FlTitlesData(
-            leftTitles: const AxisTitles(
-              sideTitles: SideTitles(showTitles: true, reservedSize: 40),
-            ),
-            bottomTitles: AxisTitles(
-              sideTitles: SideTitles(
-                showTitles: true,
-                getTitlesWidget: (value, meta) {
-                  int idx = value.toInt();
-                  // Show only every 5th label to avoid crowding
-                  if (idx % 5 == 0 && idx < labels.length) {
-                    return Text(labels[idx], style: const TextStyle(fontSize: 10));
-                  }
-                  return const SizedBox.shrink();
-                },
-                reservedSize: 28,
-              ),
-            ),
-          ),
-          borderData: FlBorderData(show: true),
-          lineBarsData: [
-            LineChartBarData(
-              spots: spots,
-              isCurved: true,
-              color: Colors.blue,
-              barWidth: 3,
-              dotData: const FlDotData(show: false),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildCategoryDistribution() {
-    final categoryData = _analytics['categoryRevenue'] as Map<String, dynamic>? ?? {};
-    final List<PieChartSectionData> sections = [];
-    
-    categoryData.forEach((category, revenue) {
-      sections.add(
-        PieChartSectionData(
-          value: revenue.toDouble(),
-          title: category.substring(0, 3),
-          radius: 100,
-          titleStyle: const TextStyle(fontSize: 12, color: Colors.white),
-        ),
-      );
-    });
-
-    return Container(
-      height: 200,
-      padding: const EdgeInsets.all(16),
-      child: PieChart(
-        PieChartData(
-          sections: sections,
-          sectionsSpace: 2,
-          centerSpaceRadius: 40,
-        ),
-      ),
-    );
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -176,11 +15,11 @@ class _AdminAnalyticsViewState extends State<AdminAnalyticsView> {
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
-            onPressed: _loadAnalytics,
+            onPressed: controller.loadAnalytics,
           ),
         ],
       ),
-      body: _isLoading
+      body: Obx(() => controller.isLoading.value
           ? const Center(child: CircularProgressIndicator())
           : SingleChildScrollView(
               padding: const EdgeInsets.all(16),
@@ -188,126 +27,314 @@ class _AdminAnalyticsViewState extends State<AdminAnalyticsView> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   _buildTimeRangeSelector(),
-                  const SizedBox(height: 16),
-                  const Text(
-                    'Performance Overview',
-                    style: TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  GridView.count(
-                    crossAxisCount: 6,
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    mainAxisSpacing: 16,
-                    crossAxisSpacing: 16,
-                    children: [
-                      AnalyticsCard(
-                        title: 'Total Revenue',
-                        data: '\$${(_analytics['totalRevenue'] ?? 0.0).toStringAsFixed(2)}',
-                        icon: Icons.attach_money,
-                        color: Colors.green,
-                        onExport: () {},
-                      ),
-                      AnalyticsCard(
-                        title: 'Total Cost',
-                        data: '\$${(_analytics['totalCost'] ?? 0.0).toStringAsFixed(2)}',
-                        icon: Icons.import_export,
-                        color: Colors.blueGrey,
-                        onExport: () {},
-                      ),
-                      AnalyticsCard(
-                        title: 'Total Profit',
-                        data: '\$${(_analytics['totalProfit'] ?? 0.0).toStringAsFixed(2)}',
-                        icon: Icons.trending_up,
-                        color: Colors.deepPurple,
-                        onExport: () {},
-                      ),
-                      AnalyticsCard(
-                        title: 'Total Orders',
-                        data: (_analytics['totalOrders'] ?? 0).toString(),
-                        icon: Icons.shopping_cart,
-                        color: Colors.blue,
-                        onExport: () {},
-                      ),
-                      AnalyticsCard(
-                        title: 'Average Order Value',
-                        data: '\$${(_analytics['averageOrderValue'] ?? 0.0).toStringAsFixed(2)}',
-                        icon: Icons.analytics,
-                        color: Colors.orange,
-                        onExport: () {},
-                      ),
-                      AnalyticsCard(
-                        title: 'Conversion Rate',
-                        data: '${(_analytics['conversionRate'] ?? 0.0).toStringAsFixed(1)}%',
-                        icon: Icons.percent,
-                        color: Colors.purple,
-                        onExport: () {},
-                      ),
-                    ],
-                  ),
                   const SizedBox(height: 24),
-                  const Text(
-                    'Sales Trend',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  _buildSalesChart(),
+                  _buildOverviewCards(),
                   const SizedBox(height: 24),
-                  const Text(
-                    'Category Distribution',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  _buildCategoryDistribution(),
+                  _buildSalesTrendChart(),
                   const SizedBox(height: 24),
-                  const Text(
-                    'Product Performance (Sales vs. Imports)',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  _buildProductPerformanceTable(),
+                  _buildTopProducts(),
                 ],
               ),
-            ),
+            )),
     );
   }
 
-  Widget _buildProductPerformanceTable() {
-    final Map<String, dynamic> performance = _analytics['productPerformance'] as Map<String, dynamic>? ?? {};
-    if (performance.isEmpty) {
-      return const Text('No product performance data available');
-    }
-    final headers = ['Product', 'Sold', 'Imported'];
-    final rows = performance.entries.map((entry) {
-      final product = entry.key;
-      final sold = entry.value['sold'] ?? 0;
-      final imported = entry.value['imported'] ?? 0;
-      return DataRow(cells: [
-        DataCell(Text(product)),
-        DataCell(Text(sold.toString())),
-        DataCell(Text(imported.toString())),
-      ]);
-    }).toList();
-    return DataTable(
-      columns: headers.map((h) => DataColumn(label: Text(h))).toList(),
-      rows: rows,
-      headingRowColor: WidgetStateProperty.resolveWith((states) => Colors.grey[200]),
-      dataRowColor: WidgetStateProperty.resolveWith((states) => Colors.white),
-      columnSpacing: 24,
-      horizontalMargin: 12,
-      showBottomBorder: true,
+  Widget _buildTimeRangeSelector() {
+    return Obx(() {
+      final start = controller.startDate.value;
+      final end = controller.endDate.value;
+      final minDate = controller.minDate ?? DateTime.now();
+      final maxDate = controller.maxDate ?? DateTime.now();
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        decoration: BoxDecoration(
+          color: Colors.grey[100],
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Row(
+              children: [
+                const Text(
+                  'From:',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(width: 8),
+                InkWell(
+                  onTap: () async {
+                    final picked = await showDatePicker(
+                      context: Get.context!,
+                      initialDate: start ?? minDate,
+                      firstDate: minDate,
+                      lastDate: maxDate,
+                    );
+                    if (picked != null) {
+                      // Set to 00:00 of picked day
+                      controller.setStartDate(DateTime(picked.year, picked.month, picked.day, 0, 0));
+                    }
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: Colors.grey[300]!),
+                    ),
+                    child: Text(
+                      start != null
+                          ? '${start.year}-${start.month.toString().padLeft(2, '0')}-${start.day.toString().padLeft(2, '0')}'
+                          : '-',
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            Row(
+              children: [
+                const Text(
+                  'To:',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(width: 8),
+                InkWell(
+                  onTap: () async {
+                    final picked = await showDatePicker(
+                      context: Get.context!,
+                      initialDate: end ?? maxDate,
+                      firstDate: minDate,
+                      lastDate: maxDate,
+                    );
+                    if (picked != null) {
+                      // Set to 23:59 of picked day
+                      controller.setEndDate(DateTime(picked.year, picked.month, picked.day, 23, 59));
+                    }
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: Colors.grey[300]!),
+                    ),
+                    child: Text(
+                      end != null
+                          ? '${end.year}-${end.month.toString().padLeft(2, '0')}-${end.day.toString().padLeft(2, '0')}'
+                          : '-',
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+    });
+  }
+
+  Widget _buildOverviewCards() {
+    return GridView.count(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      crossAxisCount: 4,
+      mainAxisSpacing: 16,
+      crossAxisSpacing: 16,
+      childAspectRatio: 1.5,
+      children: [
+        AnalyticsCard(
+          title: 'Total Revenue',
+          data: controller.formatCurrency(controller.totalRevenue),
+          icon: Icons.attach_money,
+          color: Colors.blue,
+          subtitle: 'From ${controller.totalOrders} orders',
+        ),
+        AnalyticsCard(
+          title: 'Total Profit',
+          data: controller.formatCurrency(controller.totalProfit),
+          icon: Icons.trending_up,
+          color: Colors.green,
+          subtitle: '${controller.formatPercentage(controller.profitMargin)} margin',
+        ),
+        AnalyticsCard(
+          title: 'Import Costs',
+          data: controller.formatCurrency(controller.totalImportCost),
+          icon: Icons.shopping_cart,
+          color: Colors.orange,
+          subtitle: 'Total cost of imports',
+        ),
+        AnalyticsCard(
+          title: 'Average Order',
+          data: controller.formatCurrency(controller.averageOrderValue),
+          icon: Icons.analytics,
+          color: Colors.purple,
+          subtitle: 'Per order',
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSalesTrendChart() {
+    return Container(
+      height: 300,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withAlpha(100),
+            spreadRadius: 1,
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Sales Trend',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 16),
+          Expanded(
+            child: LineChart(
+              LineChartData(
+                gridData: const FlGridData(show: false),
+                titlesData: FlTitlesData(
+                  leftTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      reservedSize: 40,
+                      getTitlesWidget: (value, meta) {
+                        return Text(
+                          controller.formatCurrency(value),
+                          style: const TextStyle(
+                            color: Colors.grey,
+                            fontSize: 12,
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                  bottomTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      getTitlesWidget: (value, meta) {
+                        final data = controller.salesTrendData;
+                        if (value.toInt() >= 0 && value.toInt() < data.length) {
+                          final date = data[value.toInt()]['date'] as String;
+                          return Text(
+                            date.split('-').last,
+                            style: const TextStyle(
+                              color: Colors.grey,
+                              fontSize: 12,
+                            ),
+                          );
+                        }
+                        return const Text('');
+                      },
+                    ),
+                  ),
+                  rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                ),
+                borderData: FlBorderData(show: false),
+                lineBarsData: [
+                  LineChartBarData(
+                    spots: controller.salesTrendData.asMap().entries.map((entry) {
+                      return FlSpot(entry.key.toDouble(), entry.value['revenue'] as double);
+                    }).toList(),
+                    isCurved: true,
+                    color: Colors.blue,
+                    barWidth: 3,
+                    isStrokeCapRound: true,
+                    dotData: const FlDotData(show: false),
+                    belowBarData: BarAreaData(
+                      show: true,
+                      color: Colors.blue.withAlpha(100),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTopProducts() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withAlpha(100),
+            spreadRadius: 1,
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Top Products',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 16),
+          ...controller.topProducts.map((product) {
+            final data = product.value as Map<String, dynamic>;
+            final profit = controller.getProductProfit(data);
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          product.key,
+                          style: const TextStyle(fontSize: 16),
+                        ),
+                        Text(
+                          'Sold: ${data['sold']} | Imported: ${data['imported']}',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Text(
+                    '+${controller.formatCurrency(profit)}',
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.green,
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }).toList(),
+        ],
+      ),
     );
   }
 }

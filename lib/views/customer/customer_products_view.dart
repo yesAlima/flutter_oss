@@ -1,13 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import '../../controllers/customer/customer_products_controller.dart';
 import '../../models/product_model.dart';
-import '../../models/category_model.dart';
-import '../../services/product_service.dart';
-import '../../services/auth_service.dart';
-import '../../controllers/category_controller.dart';
-import '../../routes/app_routes.dart';
 import 'package:flutter/services.dart';
 
 class CustomerProductsView extends StatefulWidget {
@@ -18,27 +13,9 @@ class CustomerProductsView extends StatefulWidget {
 }
 
 class _CustomerProductsViewState extends State<CustomerProductsView> with SingleTickerProviderStateMixin {
-  final _productService = Get.find<ProductService>();
-  final _categoryController = Get.find<CategoryController>();
+  final CustomerProductsController _controller = Get.find<CustomerProductsController>();
   final _searchController = TextEditingController();
-  final RxBool _isLoading = true.obs;
-  final RxList<ProductModel> _products = <ProductModel>[].obs;
   late final AnimationController _loadingController;
-  final Map<String, bool> _imageLoadingStates = {};
-
-  // Filter states
-  final RxDouble _minPrice = 0.0.obs;
-  final RxDouble _maxPrice = 0.0.obs;
-  final RxList<String> _selectedCategories = <String>[].obs;
-  final RxBool _showOutOfStock = false.obs;
-
-  // Sort states
-  final RxString _sortBy = 'name'.obs; // 'name', 'price'
-  final RxBool _sortAscending = true.obs;
-
-  // Add these variables to store the full range values
-  final RxDouble _fullMinPrice = 0.0.obs;
-  final RxDouble _fullMaxPrice = 0.0.obs;
 
   @override
   void initState() {
@@ -47,7 +24,6 @@ class _CustomerProductsViewState extends State<CustomerProductsView> with Single
       vsync: this,
       duration: const Duration(milliseconds: 1500),
     )..repeat();
-    _loadProducts();
   }
 
   @override
@@ -57,242 +33,6 @@ class _CustomerProductsViewState extends State<CustomerProductsView> with Single
     super.dispose();
   }
 
-  Future<void> _loadProducts() async {
-    _isLoading.value = true;
-    try {
-      final products = _productService.getProducts();
-      products.listen((productList) {
-        // Only show active products to customers
-        _products.value = productList.where((p) => p.isActive).toList();
-        
-        // Initialize filter ranges
-        if (_products.isNotEmpty) {
-          // Set full range values
-          _fullMinPrice.value = _products.map((p) => p.price).reduce((a, b) => a < b ? a : b).floorToDouble();
-          _fullMaxPrice.value = _products.map((p) => p.price).reduce((a, b) => a > b ? a : b).ceilToDouble();
-          
-          // Set current filter values to full range
-          _minPrice.value = _fullMinPrice.value;
-          _maxPrice.value = _fullMaxPrice.value;
-        }
-        // Preload images
-        for (var product in _products) {
-          if (product.imageUrl != null) {
-            _preloadImage(product.imageUrl!);
-          }
-        }
-      });
-    } catch (e) {
-      Get.snackbar(
-        'Error',
-        'Failed to load products: $e',
-        snackPosition: SnackPosition.BOTTOM,
-      );
-    } finally {
-      _isLoading.value = false;
-    }
-  }
-
-  Future<void> _preloadImage(String url) async {
-    if (_imageLoadingStates[url] == true) return;
-    _imageLoadingStates[url] = true;
-    try {
-      await precacheImage(NetworkImage(url), context);
-    } catch (e) {
-      print('Error preloading image: $e');
-    } finally {
-      _imageLoadingStates[url] = false;
-    }
-  }
-
-  List<ProductModel> get _filteredProducts {
-    var filtered = _products.where((product) {
-      // Search text filter
-      final searchTerm = _searchController.text.toLowerCase();
-      if (searchTerm.isNotEmpty) {
-        final matchesSearch = 
-          product.name.toLowerCase().contains(searchTerm) ||
-          product.description.toLowerCase().contains(searchTerm) ||
-          product.price.toString().contains(searchTerm) ||
-          _getCategoryName(product.categoryId).toLowerCase().contains(searchTerm);
-        if (!matchesSearch) return false;
-      }
-
-      // Price range filter
-      if (product.price < _minPrice.value || product.price > _maxPrice.value) {
-        return false;
-      }
-
-      // Category filter
-      if (_selectedCategories.isNotEmpty && !_selectedCategories.contains(product.categoryId)) {
-        return false;
-      }
-
-      // Out of stock filter
-      if (!_showOutOfStock.value && product.stock <= 0) {
-        return false;
-      }
-
-      return true;
-    }).toList();
-
-    // Apply sorting
-    filtered.sort((a, b) {
-      int comparison = 0;
-      switch (_sortBy.value) {
-        case 'price':
-          comparison = a.price.compareTo(b.price);
-          break;
-        default: // 'name'
-          comparison = a.name.compareTo(b.name);
-      }
-      return _sortAscending.value ? comparison : -comparison;
-    });
-
-    return filtered;
-  }
-
-  String _getCategoryName(String? categoryId) {
-    if (categoryId == null) return 'Not specified';
-    final category = _categoryController.categories.firstWhere(
-      (cat) => cat.id == categoryId,
-      orElse: () => CategoryModel(
-        id: '',
-        name: 'Not specified',
-        description: '',
-      ),
-    );
-    return category.name;
-  }
-
-  void _showFilterDialog() {
-    // Create temporary variables to store filter values
-    final tempMinPrice = _minPrice.value;
-    final tempMaxPrice = _maxPrice.value;
-    final tempSelectedCategories = List<String>.from(_selectedCategories);
-    final tempShowOutOfStock = _showOutOfStock.value;
-    final tempSortBy = _sortBy.value;
-    final tempSortAscending = _sortAscending.value;
-
-    // Create Rx variables for the dialog
-    final dialogMinPrice = tempMinPrice.obs;
-    final dialogMaxPrice = tempMaxPrice.obs;
-    final dialogSelectedCategories = tempSelectedCategories.obs;
-    final dialogShowOutOfStock = tempShowOutOfStock.obs;
-    final dialogSortBy = tempSortBy.obs;
-    final dialogSortAscending = tempSortAscending.obs;
-
-    Get.dialog(
-      AlertDialog(
-        title: const Text('Filter Products'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('Price Range', style: TextStyle(fontWeight: FontWeight.bold)),
-              Obx(() => RangeSlider(
-                values: RangeValues(dialogMinPrice.value, dialogMaxPrice.value),
-                min: _fullMinPrice.value,
-                max: _fullMaxPrice.value,
-                divisions: 100,
-                labels: RangeLabels(
-                  '${dialogMinPrice.value.floor()} BD',
-                  '${dialogMaxPrice.value.ceil()} BD',
-                ),
-                onChanged: (values) {
-                  dialogMinPrice.value = values.start;
-                  dialogMaxPrice.value = values.end;
-                },
-              )),
-              const SizedBox(height: 16),
-              const Text('Categories', style: TextStyle(fontWeight: FontWeight.bold)),
-              Wrap(
-                spacing: 8,
-                children: _categoryController.categories.map((category) {
-                  return Obx(() => FilterChip(
-                    label: Text(category.name),
-                    selected: dialogSelectedCategories.contains(category.id),
-                    onSelected: (selected) {
-                      if (selected) {
-                        dialogSelectedCategories.add(category.id);
-                      } else {
-                        dialogSelectedCategories.remove(category.id);
-                      }
-                    },
-                  ));
-                }).toList(),
-              ),
-              const SizedBox(height: 16),
-              Obx(() => SwitchListTile(
-                title: const Text('Show out of stock'),
-                value: dialogShowOutOfStock.value,
-                onChanged: (value) => dialogShowOutOfStock.value = value,
-              )),
-              const SizedBox(height: 16),
-              const Text('Sort By', style: TextStyle(fontWeight: FontWeight.bold)),
-              Wrap(
-                spacing: 8,
-                children: [
-                  Obx(() => ChoiceChip(
-                    label: const Text('Name'),
-                    selected: dialogSortBy.value == 'name',
-                    onSelected: (selected) {
-                      if (selected) {
-                        dialogSortBy.value = 'name';
-                      }
-                    },
-                  )),
-                  Obx(() => ChoiceChip(
-                    label: const Text('Price'),
-                    selected: dialogSortBy.value == 'price',
-                    onSelected: (selected) {
-                      if (selected) {
-                        dialogSortBy.value = 'price';
-                      }
-                    },
-                  )),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Obx(() => SwitchListTile(
-                title: const Text('Sort Ascending'),
-                value: dialogSortAscending.value,
-                onChanged: (value) => dialogSortAscending.value = value,
-              )),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              // Clear all filters to their default values
-              dialogMinPrice.value = _fullMinPrice.value;
-              dialogMaxPrice.value = _fullMaxPrice.value;
-              dialogSelectedCategories.clear();
-              dialogShowOutOfStock.value = false;
-              dialogSortBy.value = 'name';
-              dialogSortAscending.value = true;
-            },
-            child: const Text('Clear'),
-          ),
-          TextButton(
-            onPressed: () {
-              // Apply the temporary values to the actual filter states
-              _minPrice.value = dialogMinPrice.value;
-              _maxPrice.value = dialogMaxPrice.value;
-              _selectedCategories.value = List<String>.from(dialogSelectedCategories);
-              _showOutOfStock.value = dialogShowOutOfStock.value;
-              _sortBy.value = dialogSortBy.value;
-              _sortAscending.value = dialogSortAscending.value;
-              Get.back();
-            },
-            child: const Text('Apply'),
-          ),
-        ],
-      ),
-    );
-  }
 
   Widget _buildLoadingIndicator() {
     return Center(
@@ -398,48 +138,134 @@ class _CustomerProductsViewState extends State<CustomerProductsView> with Single
     );
   }
 
-  Future<void> _addToCart(ProductModel product) async {
+  void _showFilterDialog() {
+    // Create temporary variables to store filter values
+    final tempMinPrice = _controller.minPrice.value;
+    final tempMaxPrice = _controller.maxPrice.value;
+    final tempSelectedCategories = List<String>.from(_controller.selectedCategories);
+    final tempShowOutOfStock = _controller.showOutOfStock.value;
+    final tempSortBy = _controller.sortBy.value;
+    final tempSortAscending = _controller.sortAscending.value;
+
+    // Create Rx variables for the dialog
+    final dialogMinPrice = tempMinPrice.obs;
+    final dialogMaxPrice = tempMaxPrice.obs;
+    final dialogSelectedCategories = tempSelectedCategories.obs;
+    final dialogShowOutOfStock = tempShowOutOfStock.obs;
+    final dialogSortBy = tempSortBy.obs;
+    final dialogSortAscending = tempSortAscending.obs;
+
+    Get.dialog(
+      AlertDialog(
+        title: const Text('Filter Products'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Price Range', style: TextStyle(fontWeight: FontWeight.bold)),
+              Obx(() => RangeSlider(
+                values: RangeValues(dialogMinPrice.value, dialogMaxPrice.value),
+                min: _controller.fullMinPrice.value,
+                max: _controller.fullMaxPrice.value,
+                divisions: 100,
+                labels: RangeLabels(
+                  '${dialogMinPrice.value.floor()} BD',
+                  '${dialogMaxPrice.value.ceil()} BD',
+                ),
+                onChanged: (values) {
+                  dialogMinPrice.value = values.start;
+                  dialogMaxPrice.value = values.end;
+                },
+              )),
+              const SizedBox(height: 16),
+              const Text('Categories', style: TextStyle(fontWeight: FontWeight.bold)),
+              Obx(() => Wrap(
+                spacing: 8,
+                children: _controller.categories.map((category) {
+                  return FilterChip(
+                    label: Text(category.name),
+                    selected: dialogSelectedCategories.contains(category.id),
+                    onSelected: (selected) {
+                      if (selected) {
+                        dialogSelectedCategories.add(category.id);
+                      } else {
+                        dialogSelectedCategories.remove(category.id);
+                      }
+                    },
+                  );
+                }).toList(),
+              )),
+              const SizedBox(height: 16),
+              Obx(() => SwitchListTile(
+                title: const Text('Show out of stock'),
+                value: dialogShowOutOfStock.value,
+                onChanged: (value) => dialogShowOutOfStock.value = value,
+              )),
+              const SizedBox(height: 16),
+              const Text('Sort By', style: TextStyle(fontWeight: FontWeight.bold)),
+              Wrap(
+                spacing: 8,
+                children: [
+                  Obx(() => ChoiceChip(
+                    label: const Text('Name'),
+                    selected: dialogSortBy.value == 'name',
+                    onSelected: (selected) {
+                      if (selected) {
+                        dialogSortBy.value = 'name';
+                      }
+                    },
+                  )),
+                  Obx(() => ChoiceChip(
+                    label: const Text('Price'),
+                    selected: dialogSortBy.value == 'price',
+                    onSelected: (selected) {
+                      if (selected) {
+                        dialogSortBy.value = 'price';
+                      }
+                    },
+                  )),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Obx(() => SwitchListTile(
+                title: const Text('Sort Ascending'),
+                value: dialogSortAscending.value,
+                onChanged: (value) => dialogSortAscending.value = value,
+              )),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              _controller.resetFilters();
+              Get.back();
+            },
+            child: const Text('Clear'),
+          ),
+          TextButton(
+            onPressed: () {
+              _controller.updateFilters(
+                minPrice: dialogMinPrice.value,
+                maxPrice: dialogMaxPrice.value,
+                selectedCategories: dialogSelectedCategories,
+                showOutOfStock: dialogShowOutOfStock.value,
+                sortBy: dialogSortBy.value,
+                sortAscending: dialogSortAscending.value,
+              );
+              Get.back();
+            },
+            child: const Text('Apply'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showAddToCartDialog(ProductModel product) async {
     final maxQuantity = product.stock;
-    final authService = Get.find<AuthService>();
-    final user = authService.currentUser;
-    if (user == null) {
-      Get.toNamed('/login');
-      return;
-    }
-
-    // Get or create draft order (cart)
-    final ordersRef = FirebaseFirestore.instance.collection('orders');
-    final draftOrderQuery = await ordersRef
-        .where('cid', isEqualTo: user.id)
-        .where('fulfillment', isEqualTo: 'draft')
-        .get();
-
-    String orderId;
-    List<Map<String, dynamic>> orderlines = [];
-    int initialQuantity = 1;
-    if (draftOrderQuery.docs.isEmpty) {
-      // Create new draft order
-      final newOrder = await ordersRef.add({
-        'cid': user.id,
-        'orderlines': [],
-        'fulfillment': 'draft',
-        'paid': false,
-      });
-      orderId = newOrder.id;
-    } else {
-      orderId = draftOrderQuery.docs.first.id;
-      final orderData = draftOrderQuery.docs.first.data();
-      orderlines = List<Map<String, dynamic>>.from(orderData['orderlines'] ?? []);
-      final existingItem = orderlines.firstWhere(
-        (item) => item['id'] == product.id,
-        orElse: () => {},
-      );
-      if (existingItem.isNotEmpty) {
-        initialQuantity = existingItem['quantity'] ?? 1;
-      }
-    }
-
-    int quantity = initialQuantity;
+    int quantity = 1;
     final textController = TextEditingController(text: quantity.toString());
 
     await Get.dialog(
@@ -537,49 +363,8 @@ class _CustomerProductsViewState extends State<CustomerProductsView> with Single
           ),
           ElevatedButton(
             onPressed: () async {
-              try {
-                // Check if product already in cart
-                final existingItemIndex = orderlines.indexWhere((item) => item['id'] == product.id);
-                if (existingItemIndex >= 0) {
-                  // Update existing item quantity
-                  orderlines[existingItemIndex]['quantity'] = quantity;
-                  // Pop dialog immediately after updating
-                  await ordersRef.doc(orderId).update({
-                    'orderlines': orderlines,
-                  });
-                  Get.back();
-                  Get.snackbar(
-                    'Success',
-                    'Cart updated',
-                    snackPosition: SnackPosition.BOTTOM,
-                  );
-                  return;
-                } else {
-                  // Add new item
-                  orderlines.add({
-                    'id': product.id,
-                    'quantity': quantity,
-                  });
-                }
-
-                // Update order
-                await ordersRef.doc(orderId).update({
-                  'orderlines': orderlines,
-                });
-
-                Get.back();
-                Get.snackbar(
-                  'Success',
-                  'Product added to cart',
-                  snackPosition: SnackPosition.BOTTOM,
-                );
-              } catch (e) {
-                Get.snackbar(
-                  'Error',
-                  'Failed to add product to cart: $e',
-                  snackPosition: SnackPosition.BOTTOM,
-                );
-              }
+              await _controller.addToCart(product, quantity);
+              Get.back();
             },
             child: const Text('Add to Cart'),
           ),
@@ -608,7 +393,7 @@ class _CustomerProductsViewState extends State<CustomerProductsView> with Single
                     ),
                     border: const OutlineInputBorder(),
                   ),
-                  onChanged: (value) => setState(() {}),
+                  onChanged: _controller.updateSearchText,
                 ),
               ),
             ],
@@ -616,11 +401,11 @@ class _CustomerProductsViewState extends State<CustomerProductsView> with Single
         ),
         Expanded(
           child: Obx(() {
-            if (_isLoading.value) {
+            if (_controller.isLoading.value) {
               return _buildLoadingIndicator();
             }
 
-            final products = _filteredProducts;
+            final products = _controller.filteredProducts;
             if (products.isEmpty) {
               return const Center(child: Text('No products found'));
             }
@@ -660,15 +445,16 @@ class _CustomerProductsViewState extends State<CustomerProductsView> with Single
                                 ),
                               ),
                               const SizedBox(height: 4),
-                              Text(
-                                product.description,
-                                style: TextStyle(
-                                  color: Colors.grey[700],
-                                  fontSize: 14,
+                              if (product.description != null)
+                                Text(
+                                  product.description!,
+                                  style: TextStyle(
+                                    color: Colors.grey[700],
+                                    fontSize: 14,
+                                  ),
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
                                 ),
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                              ),
                               const SizedBox(height: 4),
                               Row(
                                 children: [
@@ -684,7 +470,7 @@ class _CustomerProductsViewState extends State<CustomerProductsView> with Single
                         IconButton(
                           icon: const Icon(Icons.add_shopping_cart),
                           onPressed: product.stock > 0
-                              ? () => _addToCart(product)
+                              ? () => _showAddToCartDialog(product)
                               : null,
                           tooltip: product.stock > 0
                               ? 'Add to cart'

@@ -3,13 +3,13 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 class CategoryModel {
   final String id;
   final String name;
-  final String description;
+  final String? description;
   final String? imageUrl;
 
   CategoryModel({
     required this.id,
     required this.name,
-    required this.description,
+    this.description,
     this.imageUrl,
   });
 
@@ -18,7 +18,7 @@ class CategoryModel {
     return CategoryModel(
       id: doc.id,
       name: data['name'] as String,
-      description: data['description'] as String,
+      description: data['description'] as String?,
       imageUrl: data['imageUrl'] as String?,
     );
   }

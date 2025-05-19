@@ -4,7 +4,6 @@ import '../models/user_model.dart';
 
 class UserService {
   final _firestore = FirebaseFirestore.instance;
-  final _auth = FirebaseAuth.instance;
 
   Stream<List<UserModel>> getUsers() {
     return _firestore

@@ -1,25 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import '../../services/auth_service.dart';
-import '../../services/product_service.dart';
-import '../../services/category_service.dart';
-import '../../models/product_model.dart';
-import '../../models/category_model.dart';
-import '../profile_view.dart';
+import '../../controllers/customer/customer_controller.dart';
 import '../auth/logout_view.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'customer_products_view.dart';
-import '../../routes/app_routes.dart';
 
-class CustomerView extends StatefulWidget {
+class CustomerView extends GetView<CustomerController> {
   const CustomerView({super.key});
-
-  @override
-  State<CustomerView> createState() => _CustomerViewState();
-}
-
-class _CustomerViewState extends State<CustomerView> {
-  final _authService = Get.find<AuthService>();
 
   @override
   Widget build(BuildContext context) {
@@ -29,19 +15,19 @@ class _CustomerViewState extends State<CustomerView> {
         actions: [
           IconButton(
             icon: const Icon(Icons.shopping_cart),
-            onPressed: () => Get.toNamed(AppRoutes.customerCart),
+            onPressed: () => Get.toNamed('/customer/cart'),
           ),
           IconButton(
             icon: const Icon(Icons.shopping_bag),
-            onPressed: () => Get.toNamed(AppRoutes.customerOrders),
+            onPressed: () => Get.toNamed('/customer/orders'),
           ),
           IconButton(
             icon: const Icon(Icons.location_on),
-            onPressed: () => Get.toNamed(AppRoutes.customerAddresses),
+            onPressed: () => Get.toNamed('/customer/addresses'),
           ),
           IconButton(
             icon: const Icon(Icons.person),
-            onPressed: () => Get.toNamed(AppRoutes.profile),
+            onPressed: () => Get.toNamed('/profile'),
           ),
           const LogoutView(),
         ],

@@ -1,73 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import '../../services/auth_service.dart';
-import '../../models/user_model.dart';
+import '../../controllers/auth/login_controller.dart';
 
-class LoginView extends StatefulWidget {
+class LoginView extends GetView<LoginController> {
   const LoginView({super.key});
-
-  @override
-  State<LoginView> createState() => _LoginViewState();
-}
-
-class _LoginViewState extends State<LoginView> {
-  final _formKey = GlobalKey<FormState>();
-  bool _isLoading = false;
-  bool _obscurePassword = true;
-
-  final _emailController = TextEditingController();
-  final _passwordController = TextEditingController();
-
-  @override
-  void dispose() {
-    _emailController.dispose();
-    _passwordController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _signIn() async {
-    if (!_formKey.currentState!.validate()) return;
-
-    setState(() => _isLoading = true);
-    try {
-      final authService = Get.find<AuthService>();
-      await authService.signIn(
-        _emailController.text,
-        _passwordController.text,
-      );
-      // Wait until currentUser is not null
-      while (authService.currentUser == null) {
-        await Future.delayed(const Duration(milliseconds: 10));
-      }
-      if (mounted) {
-        final user = authService.currentUser;
-        if (user?.role == 'admin') {
-          Get.offAllNamed('/admin');
-        } else if (user?.role == 'supplier') {
-          Get.offAllNamed('/supplier');
-        } else if (user?.role == 'delivery') {
-          Get.offAllNamed('/delivery');
-        } else {
-          Get.offAllNamed('/customer');
-        }
-      }
-    } catch (e, stack) {
-      print('Error: $e');
-      print('Stack trace: $stack');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -75,12 +11,12 @@ class _LoginViewState extends State<LoginView> {
       appBar: AppBar(
         title: const Text('Sign In'),
       ),
-      body: _isLoading
+      body: Obx(() => controller.isLoading.value
           ? const Center(child: CircularProgressIndicator())
           : SingleChildScrollView(
               padding: const EdgeInsets.all(16),
               child: Form(
-                key: _formKey,
+                key: controller.formKey,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
@@ -92,7 +28,7 @@ class _LoginViewState extends State<LoginView> {
                     ),
                     const SizedBox(height: 32),
                     TextFormField(
-                      controller: _emailController,
+                      controller: controller.emailController,
                       decoration: const InputDecoration(
                         labelText: 'Email',
                         border: OutlineInputBorder(),
@@ -111,25 +47,21 @@ class _LoginViewState extends State<LoginView> {
                     ),
                     const SizedBox(height: 16),
                     TextFormField(
-                      controller: _passwordController,
+                      controller: controller.passwordController,
                       decoration: InputDecoration(
                         labelText: 'Password',
                         border: const OutlineInputBorder(),
                         prefixIcon: const Icon(Icons.lock),
                         suffixIcon: IconButton(
                           icon: Icon(
-                            _obscurePassword
+                            controller.obscurePassword.value
                                 ? Icons.visibility
                                 : Icons.visibility_off,
                           ),
-                          onPressed: () {
-                            setState(() {
-                              _obscurePassword = !_obscurePassword;
-                            });
-                          },
+                          onPressed: controller.togglePasswordVisibility,
                         ),
                       ),
-                      obscureText: _obscurePassword,
+                      obscureText: controller.obscurePassword.value,
                       validator: (value) {
                         if (value == null || value.isEmpty) {
                           return 'Please enter your password';
@@ -139,7 +71,7 @@ class _LoginViewState extends State<LoginView> {
                     ),
                     const SizedBox(height: 24),
                     ElevatedButton(
-                      onPressed: _signIn,
+                      onPressed: controller.signIn,
                       child: const Text('Sign In'),
                     ),
                     const SizedBox(height: 16),
@@ -150,7 +82,7 @@ class _LoginViewState extends State<LoginView> {
                   ],
                 ),
               ),
-            ),
+            )),
     );
   }
 } 

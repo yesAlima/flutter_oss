@@ -1,70 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import '../../models/user_model.dart';
-import '../../services/user_service.dart';
-import '../../services/auth_service.dart';
-import '../../routes/app_routes.dart';
+import '../../controllers/customer/customer_address_list_controller.dart';
 
-class CustomerAddressListView extends StatefulWidget {
+class CustomerAddressListView extends GetView<CustomerAddressListController> {
   const CustomerAddressListView({super.key});
-
-  @override
-  State<CustomerAddressListView> createState() => _CustomerAddressListViewState();
-}
-
-class _CustomerAddressListViewState extends State<CustomerAddressListView> {
-  final _userService = Get.find<UserService>();
-  final _authService = Get.find<AuthService>();
-  final RxBool _isLoading = true.obs;
-  final RxList<AddressModel> _addresses = <AddressModel>[].obs;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadAddresses();
-  }
-
-  Future<void> _loadAddresses() async {
-    _isLoading.value = true;
-    try {
-      final user = _authService.currentUser;
-      if (user == null) {
-        Get.offAllNamed(AppRoutes.login);
-        return;
-      }
-
-      final userData = await _userService.getUser(user.id);
-      if (userData != null) {
-        _addresses.value = userData.addresses;
-      }
-    } catch (e) {
-      Get.snackbar('Error', 'Failed to load addresses');
-    } finally {
-      _isLoading.value = false;
-    }
-  }
-
-  Future<void> _deleteAddress(String id) async {
-    try {
-      final user = _authService.currentUser;
-      if (user == null) return;
-
-      final userData = await _userService.getUser(user.id);
-      if (userData == null) return;
-
-      final updatedAddresses = List<AddressModel>.from(userData.addresses)
-        ..removeWhere((a) => a.id == id);
-
-      await _userService.updateUser(user.id, userData.copyWith(
-        addresses: updatedAddresses,
-      ));
-
-      Get.snackbar('Success', 'Address deleted successfully');
-      _loadAddresses();
-    } catch (e) {
-      Get.snackbar('Error', 'Failed to delete address');
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -75,10 +14,7 @@ class _CustomerAddressListViewState extends State<CustomerAddressListView> {
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: ElevatedButton.icon(
-              onPressed: () async {
-                await Get.toNamed(AppRoutes.customerAddressForm);
-                _loadAddresses();
-              },
+              onPressed: controller.navigateToAddAddress,
               icon: const Icon(Icons.add),
               label: const Text('Add Address'),
               style: ElevatedButton.styleFrom(
@@ -94,11 +30,11 @@ class _CustomerAddressListViewState extends State<CustomerAddressListView> {
         ],
       ),
       body: Obx(() {
-        if (_isLoading.value) {
+        if (controller.isLoading.value) {
           return const Center(child: CircularProgressIndicator());
         }
 
-        if (_addresses.isEmpty) {
+        if (controller.addresses.isEmpty) {
           return const Center(
             child: Text(
               'No addresses found',
@@ -109,9 +45,9 @@ class _CustomerAddressListViewState extends State<CustomerAddressListView> {
 
         return ListView.builder(
           padding: const EdgeInsets.all(16),
-          itemCount: _addresses.length,
+          itemCount: controller.addresses.length,
           itemBuilder: (context, index) {
-            final address = _addresses[index];
+            final address = controller.addresses[index];
             return Card(
               margin: const EdgeInsets.only(bottom: 16),
               elevation: 2,
@@ -158,17 +94,11 @@ class _CustomerAddressListViewState extends State<CustomerAddressListView> {
                       children: [
                         IconButton(
                           icon: const Icon(Icons.edit),
-                          onPressed: () async {
-                            await Get.toNamed(
-                              AppRoutes.customerAddressForm,
-                              arguments: address,
-                            );
-                            _loadAddresses();
-                          },
+                          onPressed: () => controller.navigateToEditAddress(address),
                         ),
                         IconButton(
                           icon: const Icon(Icons.delete, color: Colors.red),
-                          onPressed: () => _deleteAddress(address.id),
+                          onPressed: () => controller.deleteAddress(address.id),
                         ),
                       ],
                     ),

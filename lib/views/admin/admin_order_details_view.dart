@@ -3,608 +3,51 @@ import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 import '../../models/order_model.dart';
 import '../../models/user_model.dart';
-import '../../models/product_model.dart';
-import '../../services/order_service.dart';
-import '../../services/auth_service.dart';
-import '../../services/product_service.dart';
-import '../../routes/app_routes.dart';
+import '../../controllers/admin/admin_order_details_controller.dart';
+import '../import_view.dart';
+import '../../controllers/import_controller.dart';
 
-class AdminOrderDetailsView extends StatefulWidget {
-  final String orderId;
-
-  const AdminOrderDetailsView({
-    Key? key,
-    required this.orderId,
-  }) : super(key: key);
-
-  @override
-  State<AdminOrderDetailsView> createState() => AdminOrderDetailsViewState();
-}
-
-class AdminOrderDetailsViewState extends State<AdminOrderDetailsView> {
-  final _orderService = Get.find<OrderService>();
-  final _authService = Get.find<AuthService>();
-  final _productService = Get.find<ProductService>();
-  final Rx<OrderModel?> _order = Rx<OrderModel?>(null);
-  final RxBool _isLoading = true.obs;
-  late final UserModel _currentUser;
-  Map<String, ProductModel> _products = {};
-
-  RxBool get isLoading => _isLoading;
-  Rx<OrderModel?> get order => _order;
-
-  @override
-  void initState() {
-    super.initState();
-    _currentUser = _authService.currentUser!;
-    _loadOrder();
-  }
-
-  Future<void> _loadOrder() async {
-    _isLoading.value = true;
-    try {
-      _orderService.getOrderById(widget.orderId).listen((order) {
-        _order.value = order;
-        if (order != null) {
-          _loadProducts(order);
-        }
-      });
-    } catch (e) {
-      Get.snackbar('Error', 'Failed to load order details');
-    } finally {
-      _isLoading.value = false;
-    }
-  }
-
-  Future<void> _loadProducts(OrderModel order) async {
-    final products = <String, ProductModel>{};
-    for (final line in order.orderlines) {
-      final product = await _productService.getProduct(line.id);
-      if (product != null) {
-        products[line.id] = product;
-      }
-    }
-    setState(() {
-      _products = products;
-    });
-  }
-
-  Color _getStatusColor(OrderFulfillment status) {
-    switch (status) {
-      case OrderFulfillment.pending:
-        return Colors.orange;
-      case OrderFulfillment.unfulfilled:
-        return Colors.blue;
-      case OrderFulfillment.fulfilled:
-        return Colors.green;
-      case OrderFulfillment.cancelled:
-        return Colors.red;
-      case OrderFulfillment.draft:
-        return Colors.grey;
-      case OrderFulfillment.import:
-        return Colors.purple;
-    }
-  }
-
-  String _getStatusText(OrderFulfillment status) {
-    switch (status) {
-      case OrderFulfillment.pending:
-        return 'Pending';
-      case OrderFulfillment.unfulfilled:
-        return 'Assigned to Delivery';
-      case OrderFulfillment.fulfilled:
-        return 'Delivered';
-      case OrderFulfillment.cancelled:
-        return 'Cancelled';
-      case OrderFulfillment.draft:
-        return 'Draft';
-      case OrderFulfillment.import:
-        return 'Import';
-    }
-  }
-
-  double _getOrderTotal() {
-    if (_order.value == null) return 0;
-    double total = 0;
-    for (var line in _order.value!.orderlines) {
-      final product = _products[line.id];
-      if (product != null) {
-        total += product.price * line.quantity;
-      }
-    }
-    return total;
-  }
-
-  Widget _buildCustomerInfo() {
-    if (_order.value?.cid == null) return const SizedBox.shrink();
-    return FutureBuilder<UserModel?>(
-      future: _authService.getUser(_order.value!.cid!),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const ListTile(
-            leading: Icon(Icons.person),
-            title: Text('Loading customer info...'),
-          );
-        }
-        final customer = snapshot.data;
-        return ListTile(
-          leading: const Icon(Icons.person),
-          title: Text(customer?.name ?? 'Unknown Customer'),
-          subtitle: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(customer?.email ?? ''),
-              if (customer?.phone != null && customer!.phone.isNotEmpty)
-                Text('+973 ${customer.phone}'),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildDeliveryInfo() {
-    if (!_canViewDeliveryInfo()) return const SizedBox.shrink();
-    if (_order.value?.did == null) return const SizedBox.shrink();
-
-    return FutureBuilder<UserModel?>(
-      future: _authService.getUser(_order.value!.did!),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const ListTile(
-            leading: Icon(Icons.delivery_dining),
-            title: Text('Loading delivery info...'),
-          );
-        }
-        final delivery = snapshot.data;
-        return ListTile(
-          leading: const Icon(Icons.delivery_dining),
-          title: Text(delivery?.name ?? 'Unknown Delivery'),
-          subtitle: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(delivery?.email ?? ''),
-              if (delivery?.phone != null && delivery!.phone.isNotEmpty)
-                Text('+973 ${delivery.phone}'),
-            ],
-          ),
-          trailing: _canAssignDelivery() ? _buildDeliveryChip() : null,
-        );
-      },
-    );
-  }
-
-  Widget _buildDeliveryChip() {
-    return RawChip(
-      avatar: const Icon(Icons.delivery_dining, size: 18),
-      label: const Text('Change Delivery'),
-      onPressed: _showDeliveryUserMenu,
-      backgroundColor: Colors.blue.shade100,
-      labelStyle: TextStyle(
-        color: Colors.blue.shade700,
-      ),
-    );
-  }
-
-  void _showDeliveryUserMenu() {
-    if (!_currentUser.isAdmin) return;
-
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (context) {
-        return FutureBuilder<List<UserModel>>(
-          future: _authService.getDeliveryUsers(),
-          builder: (context, snapshot) {
-            if (!snapshot.hasData) {
-              return const Center(child: CircularProgressIndicator());
-            }
-            final deliveryUsers = snapshot.data!;
-            return ListView(
-              shrinkWrap: true,
-              children: [
-                const ListTile(
-                  title: Text('Assign Delivery', style: TextStyle(fontWeight: FontWeight.bold)),
-                ),
-                ...deliveryUsers.map((user) => ListTile(
-                  leading: const Icon(Icons.person),
-                  title: Text(user.name),
-                  onTap: () async {
-                    try {
-                      await _orderService.assignDelivery(_order.value!.id, user.id);
-                      Navigator.pop(context);
-                      Get.snackbar(
-                        'Success',
-                        'Delivery assigned successfully',
-                        snackPosition: SnackPosition.BOTTOM,
-                      );
-                    } catch (e) {
-                      Get.snackbar(
-                        'Error',
-                        'Failed to assign delivery: $e',
-                        snackPosition: SnackPosition.BOTTOM,
-                      );
-                    }
-                  },
-                )),
-              ],
-            );
-          },
-        );
-      },
-    );
-  }
-
-  Widget _buildDeliveryAddress() {
-    if (_order.value?.address == null) return const SizedBox.shrink();
-
-    final address = _order.value!.address!;
-    return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 16),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Delivery Address',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                const Icon(Icons.location_on, color: Colors.grey),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Block ${address.block}',
-                        style: const TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                      if (address.road != null) ...[
-                        const SizedBox(height: 4),
-                        Text('Road ${address.road}'),
-                      ],
-                      const SizedBox(height: 4),
-                      Text('Building ${address.building}'),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildOrderItems() {
-    return Card(
-      margin: const EdgeInsets.all(16),
-      child: _order.value!.fulfillment != OrderFulfillment.import ? 
-      Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Padding(
-            padding: EdgeInsets.all(16),
-            child: Text(
-              'Order Items',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
-          const Divider(),
-          ListView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: _order.value?.orderlines.length ?? 0,
-            itemBuilder: (context, index) {
-              final line = _order.value!.orderlines[index];
-              final product = _products[line.id];
-              if (product == null) return const SizedBox.shrink();
-              return ListTile(
-                leading: product.imageUrl != null
-                    ? Image.network(
-                        product.imageUrl!,
-                        width: 50,
-                        height: 50,
-                        fit: BoxFit.cover,
-                      )
-                    : const Icon(Icons.image_not_supported),
-                title: Text(product.name),
-                subtitle: Text('${product.price.toStringAsFixed(3)} BD x ${line.quantity}'),
-                trailing: Text(
-                  '${(product.price * line.quantity).toStringAsFixed(3)} BD',
-                  style: const TextStyle(fontWeight: FontWeight.bold),
-                ),
-              );
-            },
-          ),
-          const Divider(),
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text(
-                  'Total',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                Text(
-                  '${_getOrderTotal().toStringAsFixed(3)} BD',
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ) : 
-      Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Padding(
-            padding: EdgeInsets.all(16),
-            child: Text(
-              'Order Items',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
-          const Divider(),
-          ListView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: _order.value?.orderlines.length ?? 0,
-            itemBuilder: (context, index) {
-              final line = _order.value!.orderlines[index];
-              final product = _products[line.id];
-              if (product == null) return const SizedBox.shrink();
-              return ListTile(
-                leading: product.imageUrl != null
-                    ? Image.network(
-                        product.imageUrl!,
-                        width: 50,
-                        height: 50,
-                        fit: BoxFit.cover,
-                      )
-                    : const Icon(Icons.image_not_supported),
-                title: Text(product.name),
-                subtitle: Text('${((line.price ?? 0)/line.quantity).toStringAsFixed(3)} BD x ${line.quantity}'),
-                trailing: Text(
-                  'Total: ${(line.price ?? 0 * line.quantity).toStringAsFixed(3)} BD',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 18,
-                    ),
-                ),
-              );
-            },
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildOrderStatus() {
-    return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 16),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Order Status',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: _getStatusColor(_order.value!.fulfillment).withAlpha(100),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(
-                      color: _getStatusColor(_order.value!.fulfillment),
-                    ),
-                  ),
-                  child: Text(
-                    _getStatusText(_order.value!.fulfillment),
-                    style: TextStyle(
-                      color: _getStatusColor(_order.value!.fulfillment),
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                if (_order.value!.fulfillment != OrderFulfillment.cancelled && _order.value!.fulfillment != OrderFulfillment.import)
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: (_order.value!.paid ?? false)
-                          ? Colors.green.withAlpha(100)
-                          : Colors.red.withAlpha(100),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(
-                        color: (_order.value!.paid ?? false) ? Colors.green : Colors.red,
-                      ),
-                    ),
-                    child: Text(
-                      (_order.value!.paid ?? false) ? 'Paid' : 'Unpaid',
-                      style: TextStyle(
-                        color: (_order.value!.paid ?? false) ? Colors.green : Colors.red,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildActionButtons() {
-    if (_order.value == null) return const SizedBox.shrink();
-
-    final order = _order.value!;
-    if (_currentUser.isDelivery && order.did != _currentUser.id) {
-      return const SizedBox.shrink();
-    }
-
-    switch (order.fulfillment) {
-      case OrderFulfillment.pending:
-        if (!_currentUser.isAdmin) return const SizedBox.shrink();
-        return Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            children: [
-              Expanded(
-                child: ElevatedButton.icon(
-                  onPressed: () => _updateOrderStatus(OrderFulfillment.cancelled),
-                  icon: const Icon(Icons.cancel),
-                  label: const Text('Cancel Order'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.red,
-                    foregroundColor: Colors.white,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        );
-      case OrderFulfillment.unfulfilled:
-        return Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            children: [
-              if (_currentUser.isAdmin)
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: () => _updateOrderStatus(OrderFulfillment.cancelled),
-                    icon: const Icon(Icons.cancel),
-                    label: const Text('Cancel Order'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.red,
-                      foregroundColor: Colors.white,
-                    ),
-                  ),
-                ),
-              if (_currentUser.isAdmin) const SizedBox(width: 16),
-              Expanded(
-                child: ElevatedButton.icon(
-                  onPressed: () => _updateOrderStatus(OrderFulfillment.fulfilled),
-                  icon: const Icon(Icons.check_circle),
-                  label: const Text('Mark as Delivered'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green,
-                    foregroundColor: Colors.white,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        );
-      case OrderFulfillment.fulfilled:
-        return Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            children: [
-              Expanded(
-                child: ElevatedButton.icon(
-                  onPressed: () => _updateOrderStatus(OrderFulfillment.unfulfilled),
-                  icon: const Icon(Icons.undo),
-                  label: const Text('Revert to Unfulfilled'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.orange,
-                    foregroundColor: Colors.white,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        );
-      case OrderFulfillment.cancelled:
-      case OrderFulfillment.draft:
-      case OrderFulfillment.import:
-        return const SizedBox.shrink();
-    }
-  }
-
-  Future<void> _updateOrderStatus(OrderFulfillment status) async {
-    try {
-      await _orderService.updateFulfillment(_order.value!.id, status);
-      Get.snackbar(
-        'Success',
-        'Order status updated successfully',
-        snackPosition: SnackPosition.BOTTOM,
-      );
-    } catch (e) {
-      Get.snackbar(
-        'Error',
-        'Failed to update order status: $e',
-        snackPosition: SnackPosition.BOTTOM,
-      );
-    }
-  }
-
-  bool _canViewDeliveryInfo() => _currentUser.isAdmin;
-  bool _canAssignDelivery() => 
-    _currentUser.isAdmin && 
-    (_order.value?.fulfillment == OrderFulfillment.pending || 
-     _order.value?.fulfillment == OrderFulfillment.unfulfilled);
+class AdminOrderDetailsView extends GetView<AdminOrderDetailsController> {
+  const AdminOrderDetailsView({Key? key}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Obx(() => Text(
-          _order.value?.ref != null 
-              ? 'Order #${_order.value!.ref}'
-              : 'Order Details',
-        )),
+        title: const Text('Order Details'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.delete),
+            onPressed: controller.deleteOrder,
+          ),
+        ],
       ),
       body: Obx(() {
-        if (_isLoading.value) {
+        if (controller.isLoading.value) {
           return const Center(child: CircularProgressIndicator());
         }
-
-        if (_order.value == null) {
+        final order = controller.order.value;
+        if (order == null) {
           return const Center(child: Text('Order not found'));
         }
-
         return SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              buildOrderStatus(),
-              buildCustomerInfo(),
-              buildDeliveryInfo(),
-              buildDeliveryAddress(),
-              buildOrderItems(),
-              _buildActionButtons(),
+              _buildOrderHeader(order),
+              const SizedBox(height: 24),
+              _buildCustomerSection(order),
+              const SizedBox(height: 24),
+              if (order.did != null) ...[
+                _buildDeliverySection(order),
+                const SizedBox(height: 24),
+              ],
+              _buildOrderItemsSection(order),
+              const SizedBox(height: 24),
+              _buildOrderSummary(order),
+              const SizedBox(height: 24),
+              _buildActionsCard(order, context),
             ],
           ),
         );
@@ -612,9 +55,362 @@ class AdminOrderDetailsViewState extends State<AdminOrderDetailsView> {
     );
   }
 
-  Widget buildOrderStatus() => _buildOrderStatus();
-  Widget buildCustomerInfo() => _buildCustomerInfo();
-  Widget buildDeliveryInfo() => _buildDeliveryInfo();
-  Widget buildDeliveryAddress() => _buildDeliveryAddress();
-  Widget buildOrderItems() => _buildOrderItems();
+  Widget _buildOrderHeader(OrderModel order) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Order #${order.ref ?? (order.id.length > 6 ? order.id.substring(order.id.length - 6) : order.id)}',
+                  style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: controller.getStatusColor(order.fulfillment).withAlpha(100),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    controller.getStatusText(order.fulfillment),
+                    style: TextStyle(
+                      color: controller.getStatusColor(order.fulfillment),
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Ordered At: ${order.orderedAt != null ? DateFormat('MMM d, y HH:mm').format(order.orderedAt!) : 'N/A'}',
+              style: const TextStyle(color: Colors.grey),
+            ),
+            if (order.address != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                'Address: Block ${order.address!.block}, Building ${order.address!.building}${order.address!.road != null ? ', Road ${order.address!.road}' : ''}',
+                style: const TextStyle(color: Colors.grey),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCustomerSection(OrderModel order) {
+    Widget customerWidget;
+    if (order.fulfillment == OrderFulfillment.import) {
+      customerWidget = const Text('Source information not available');
+    } else {
+      customerWidget = FutureBuilder<UserModel?>(
+        future: controller.getUser(order.cid!),
+        builder: (context, snapshot) {
+          final customer = snapshot.data;
+          if (customer == null) {
+            return const Text('Customer information not available');
+          }
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(customer.name, style: const TextStyle(fontSize: 16)),
+              if (customer.phone.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text('+973 ${customer.phone}', style: const TextStyle(color: Colors.grey)),
+              ],
+            ],
+          );
+        },
+      );
+    }
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              order.fulfillment == OrderFulfillment.import
+                  ? 'Source Information'
+                  : 'Customer Information',
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 16),
+            customerWidget,
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDeliverySection(OrderModel order) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Delivery Information', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 16),
+            FutureBuilder<UserModel?>(
+              future: controller.getUser(order.did!),
+              builder: (context, snapshot) {
+                final deliveryPerson = snapshot.data;
+                if (deliveryPerson == null) {
+                  return const Text('Delivery information not available');
+                }
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(deliveryPerson.name, style: const TextStyle(fontSize: 16)),
+                    if (deliveryPerson.phone.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text('+973 ${deliveryPerson.phone}', style: const TextStyle(color: Colors.grey)),
+                    ],
+                  ],
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildOrderItemsSection(OrderModel order) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Order Items', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 16),
+            Obx(() {
+              final products = controller.products.value;
+              if (products.isEmpty) {
+                return const Text('No items in this order');
+              }
+              return ListView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: order.orderlines.length,
+                itemBuilder: (context, index) {
+                  final line = order.orderlines[index];
+                  final product = products[line.id];
+                  if (product == null) return const SizedBox.shrink();
+                  final unitPrice = line.quantity == 0 ? 0 : (line.price ?? 0) / line.quantity;
+                  return ListTile(
+                    title: Text(product.name),
+                    subtitle: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Unit Price: ${unitPrice.toStringAsFixed(3)} BD'),
+                        Text('Total: ${line.price?.toStringAsFixed(3) ?? '0.000'} BD'),
+                      ],
+                    ),
+                    trailing: Text('x${line.quantity}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                  );
+                },
+              );
+            }),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildOrderSummary(OrderModel order) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Order Summary', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 16),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text('Total Amount:', style: TextStyle(fontSize: 16)),
+                Text('${controller.getOrderTotal().toStringAsFixed(3)} BD', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              ],
+            ),
+            if (order.fulfillment != OrderFulfillment.cancelled && order.paid != null) ...[
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: order.paid! ? Colors.green.shade100 : Colors.red.shade100,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  order.paid! ? 'Paid' : 'Unpaid',
+                  style: TextStyle(
+                    color: order.paid! ? Colors.green : Colors.red,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildActionsCard(OrderModel order, BuildContext context) {
+    final isImport = order.fulfillment == OrderFulfillment.import;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Actions', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 16),
+            Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              children: [
+                if (!isImport && (order.fulfillment == OrderFulfillment.pending || order.fulfillment == OrderFulfillment.unfulfilled))
+                  Tooltip(
+                    message: order.did == null ? 'Assign Delivery' : 'Change Delivery',
+                    child: ElevatedButton.icon(
+                      icon: const Icon(Icons.delivery_dining),
+                      label: Text(order.did == null ? 'Assign Delivery' : 'Change Delivery'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.blue.shade50,
+                        foregroundColor: Colors.blue,
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      ),
+                      onPressed: _showDeliveryUserDialog,
+                    ),
+                  ),
+                if (!isImport && order.fulfillment == OrderFulfillment.unfulfilled && order.did != null)
+                  Tooltip(
+                    message: 'Remove Delivery',
+                    child: ElevatedButton.icon(
+                      icon: const Icon(Icons.close),
+                      label: const Text('Remove Delivery'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.red.shade50,
+                        foregroundColor: Colors.orange,
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      ),
+                      onPressed: () => controller.revokeDelivery(order.id),
+                    ),
+                  ),
+                if (!isImport && order.fulfillment == OrderFulfillment.unfulfilled)
+                  Tooltip(
+                    message: 'Mark as Delivered',
+                    child: ElevatedButton.icon(
+                      icon: const Icon(Icons.check_circle),
+                      label: const Text('Mark as Delivered'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.green.shade50,
+                        foregroundColor: Colors.green,
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      ),
+                      onPressed: () => controller.updateOrderStatus(OrderFulfillment.fulfilled),
+                    ),
+                  ),
+                if (!isImport && (order.fulfillment == OrderFulfillment.pending || order.fulfillment == OrderFulfillment.unfulfilled))
+                  Tooltip(
+                    message: 'Cancel Order',
+                    child: ElevatedButton.icon(
+                      icon: const Icon(Icons.cancel),
+                      label: const Text('Cancel Order'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.red.shade100,
+                        foregroundColor: Colors.red,
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      ),
+                      onPressed: () => controller.updateOrderStatus(OrderFulfillment.cancelled),
+                    ),
+                  ),
+                if (!isImport && order.fulfillment == OrderFulfillment.fulfilled)
+                  Tooltip(
+                    message: 'Revert to Unfulfilled',
+                    child: ElevatedButton.icon(
+                      icon: const Icon(Icons.undo),
+                      label: const Text('Revert to Unfulfilled'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.blue.shade50,
+                        foregroundColor: Colors.blue,
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      ),
+                      onPressed: () => controller.updateOrderStatus(OrderFulfillment.unfulfilled),
+                    ),
+                  ),
+                if (isImport)
+                  Tooltip(
+                    message: 'Edit Import Order',
+                    child: ElevatedButton.icon(
+                      icon: const Icon(Icons.edit),
+                      label: const Text('Edit Import Order'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.purple.shade100,
+                        foregroundColor: Colors.purple,
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      ),
+                      onPressed: () {
+                        Get.lazyPut<ImportController>(() => ImportController());
+                        showDialog(
+                          context: context,
+                          builder: (context) => ImportView(order: order),
+                        );
+                      },
+                    ),
+                  ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showDeliveryUserDialog() {
+    if (!controller.currentUser.isAdmin) return;
+    Get.dialog(
+      AlertDialog(
+        title: const Text('Assign Delivery'),
+        content: FutureBuilder<List<UserModel>>(
+          future: controller.getDeliveryUsers(),
+          builder: (context, snapshot) {
+            if (!snapshot.hasData) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            final deliveryUsers = snapshot.data!;
+            return SizedBox(
+              width: 300,
+              child: ListView(
+                shrinkWrap: true,
+                children: deliveryUsers.map((user) => ListTile(
+                  leading: const Icon(Icons.person),
+                  title: Text(user.name),
+                  onTap: () async {
+                    await controller.assignDelivery(user.id);
+                    Get.back();
+                  },
+                )).toList(),
+              ),
+            );
+          },
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Get.back(),
+            child: const Text('Cancel'),
+          ),
+        ],
+      ),
+    );
+  }
 } 

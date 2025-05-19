@@ -67,7 +67,7 @@ class AppPages {
     ),
     GetPage(
       name: AppRoutes.adminOrderDetails,
-      page: () => AdminOrderDetailsView(orderId: Get.arguments),
+      page: () => const AdminOrderDetailsView(),
     ),
     GetPage(
       name: AppRoutes.sources,
@@ -91,7 +91,7 @@ class AppPages {
     ),
     GetPage(
       name: AppRoutes.customerOrderDetails,
-      page: () => CustomerOrderDetailsView(orderId: Get.arguments),
+      page: () => const CustomerOrderDetailsView(),
     ),
     GetPage(
       name: AppRoutes.delivery,
@@ -111,7 +111,7 @@ class AppPages {
     ),
     GetPage(
       name: AppRoutes.supplierOrderDetails,
-      page: () => SupplierOrderDetailsView(orderId: Get.arguments),
+      page: () => const SupplierOrderDetailsView(),
     ),
   ];
 } 

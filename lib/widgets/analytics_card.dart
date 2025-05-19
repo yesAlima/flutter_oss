@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 
 class AnalyticsCard extends StatelessWidget {
   final String title;
   final String data;
   final IconData icon;
   final Color color;
-  final VoidCallback onExport;
+  final String? subtitle;
+  final VoidCallback? onExport;
 
   const AnalyticsCard({
     super.key,
@@ -14,7 +14,8 @@ class AnalyticsCard extends StatelessWidget {
     required this.data,
     required this.icon,
     required this.color,
-    required this.onExport,
+    this.subtitle,
+    this.onExport,
   });
 
   @override
@@ -35,10 +36,11 @@ class AnalyticsCard extends StatelessWidget {
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-                IconButton(
-                  icon: const Icon(Icons.download),
-                  onPressed: onExport,
-                ),
+                if (onExport != null)
+                  IconButton(
+                    icon: const Icon(Icons.download),
+                    onPressed: onExport,
+                  ),
               ],
             ),
             const SizedBox(height: 8),
@@ -55,6 +57,16 @@ class AnalyticsCard extends StatelessWidget {
                 ),
               ],
             ),
+            if (subtitle != null) ...[
+              const SizedBox(height: 4),
+              Text(
+                subtitle!,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.grey[600],
+                ),
+              ),
+            ],
           ],
         ),
       ),

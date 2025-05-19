@@ -17,7 +17,7 @@ class CategoryService {
 
   Future<void> createCategory({
     required String name,
-    required String description,
+    String? description,
     String? imageUrl,
   }) async {
     try {
@@ -41,11 +41,21 @@ class CategoryService {
 
   Future<void> deleteCategory(String id) async {
     try {
+      // Always try to delete the image first
       final doc = await _firestore.collection(_collection).doc(id).get();
+      String? imageUrl;
       if (doc.exists) {
         final category = CategoryModel.fromFirestore(doc);
-        if (category.imageUrl != null && category.imageUrl!.isNotEmpty) {
-          await FirebaseStorage.instance.refFromURL(category.imageUrl!).delete();
+        imageUrl = category.imageUrl;
+      }
+      if (imageUrl != null && imageUrl.isNotEmpty) {
+        try {
+          await FirebaseStorage.instance.refFromURL(imageUrl).delete();
+        } catch (e) {
+          // Ignore if image does not exist
+          if (!(e is FirebaseException && e.code == 'object-not-found')) {
+            rethrow;
+          }
         }
       }
       await _firestore.collection(_collection).doc(id).delete();

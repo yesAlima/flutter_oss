@@ -2,101 +2,114 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../models/category_model.dart';
-import '../../services/category_service.dart';
+import '../../controllers/admin/admin_category_list_controller.dart';
 import '../../routes/app_routes.dart';
-import 'admin_category_form_view.dart';
 
-class AdminCategoryListView extends StatefulWidget {
+class AdminCategoryListView extends GetView<AdminCategoryListController> {
   const AdminCategoryListView({super.key});
 
   @override
-  State<AdminCategoryListView> createState() => _AdminCategoryListViewState();
-}
-
-class _AdminCategoryListViewState extends State<AdminCategoryListView> with SingleTickerProviderStateMixin {
-  final _categoryService = Get.find<CategoryService>();
-  final _searchController = TextEditingController();
-  final RxBool _isLoading = true.obs;
-  final RxList<CategoryModel> _categories = <CategoryModel>[].obs;
-  late final AnimationController _loadingController;
-  final Map<String, bool> _imageLoadingStates = {};
-
-  @override
-  void initState() {
-    super.initState();
-    _loadingController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1500),
-    )..repeat();
-    _loadCategories();
-  }
-
-  @override
-  void dispose() {
-    _searchController.dispose();
-    _loadingController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _loadCategories() async {
-    _isLoading.value = true;
-    try {
-      final categories = await _categoryService.getCategories().first;
-      _categories.value = categories;
-      // Preload images
-      for (var category in categories) {
-        if (category.imageUrl != null) {
-          _preloadImage(category.imageUrl!);
-        }
-      }
-    } catch (e) {
-      Get.snackbar('Error', 'Failed to load categories');
-    } finally {
-      _isLoading.value = false;
-    }
-  }
-
-  Future<void> _preloadImage(String url) async {
-    if (_imageLoadingStates[url] == true) return;
-    _imageLoadingStates[url] = true;
-    try {
-      await precacheImage(NetworkImage(url), context);
-    } catch (e) {
-      print('Error preloading image: $e');
-    } finally {
-      _imageLoadingStates[url] = false;
-    }
-  }
-
-  List<CategoryModel> get _filteredCategories {
-    final searchTerm = _searchController.text.toLowerCase();
-    return _categories.where((category) {
-      final name = category.name.toLowerCase();
-      final description = category.description.toLowerCase();
-      return name.contains(searchTerm) || description.contains(searchTerm);
-    }).toList();
-  }
-
-  Widget _buildLoadingIndicator() {
-    return Center(
-      child: AnimatedBuilder(
-        animation: _loadingController,
-        builder: (context, child) {
-          return Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: Colors.grey[200],
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: CircularProgressIndicator(
-              valueColor: AlwaysStoppedAnimation<Color>(
-                Theme.of(context).primaryColor.withAlpha(128),
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Categories'),
+        actions: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: ElevatedButton.icon(
+              onPressed: () async {
+                await Get.toNamed(AppRoutes.adminCategoryForm);
+                controller.loadCategories(); // Reload after returning from form
+              },
+              icon: const Icon(Icons.add),
+              label: const Text('Add Category'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Theme.of(context).primaryColor,
+                foregroundColor: Colors.white,
+                elevation: 2,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
               ),
-              strokeWidth: 3,
             ),
-          );
-        },
+          ),
+        ],
+      ),
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: TextField(
+              controller: controller.searchController,
+              decoration: InputDecoration(
+                hintText: 'Search categories...',
+                prefixIcon: const Icon(Icons.search),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                suffixIcon: IconButton(
+                  icon: const Icon(Icons.clear),
+                  onPressed: () {
+                    controller.searchController.clear();
+                    controller.loadCategories();
+                  },
+                ),
+              ),
+              onChanged: (_) => controller.loadCategories(),
+            ),
+          ),
+          Expanded(
+            child: Obx(() {
+              if (controller.isLoading.value) {
+                return const Center(child: CircularProgressIndicator());
+              }
+
+              final categories = controller.filteredCategories;
+              if (categories.isEmpty) {
+                return const Center(
+                  child: Text(
+                    'No categories found',
+                    style: TextStyle(fontSize: 18),
+                  ),
+                );
+              }
+
+              return ListView.builder(
+                padding: const EdgeInsets.all(16),
+                itemCount: categories.length,
+                itemBuilder: (context, index) {
+                  final category = categories[index];
+                  return Card(
+                    margin: const EdgeInsets.only(bottom: 16),
+                    child: InkWell(
+                      onTap: () async {
+                        final result = await Get.toNamed(AppRoutes.adminCategoryForm,
+                          arguments: category.id,
+                        );
+                        if (result is CategoryModel) {
+                          controller.updateCategoryInList(result);
+                        }
+                      },
+                      child: ListTile(
+                        leading: SizedBox(
+                          width: 56,
+                          height: 56,
+                          child: _buildCategoryImage(category.imageUrl),
+                        ),
+                        title: Text(category.name),
+                        subtitle: Text(category.description ?? ''),
+                        trailing: IconButton(
+                          icon: const Icon(Icons.delete, color: Colors.red),
+                          onPressed: () => controller.deleteCategory(category.id),
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              );
+            }),
+          ),
+        ],
       ),
     );
   }
@@ -117,7 +130,9 @@ class _AdminCategoryListViewState extends State<AdminCategoryListView> with Sing
       child: CachedNetworkImage(
         imageUrl: imageUrl,
         fit: BoxFit.cover,
-        placeholder: (context, url) => _buildLoadingIndicator(),
+        placeholder: (context, url) => const Center(
+          child: CircularProgressIndicator(),
+        ),
         errorWidget: (context, url, error) {
           debugPrint('Error loading image: $error for URL: $url');
           return Container(
@@ -138,135 +153,6 @@ class _AdminCategoryListViewState extends State<AdminCategoryListView> with Sing
         maxWidthDiskCache: 160,
         maxHeightDiskCache: 160,
       ),
-    );
-  }
-
-  Future<void> _deleteCategory(String id) async {
-    try {
-      await _categoryService.deleteCategory(id);
-      Get.snackbar('Success', 'Category deleted successfully');
-      _loadCategories();
-    } catch (e) {
-      Get.snackbar('Error', 'Failed to delete category');
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Categories'),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: ElevatedButton.icon(
-              onPressed: () async {
-                await Get.toNamed('/admin/category/form');
-                _loadCategories(); // Reload after returning from form
-              },
-              icon: const Icon(Icons.add),
-              label: const Text('Add Category'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Theme.of(context).primaryColor,
-                foregroundColor: Colors.white,
-                elevation: 2,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-      body: Obx(() {
-        if (_isLoading.value) {
-          return const Center(child: CircularProgressIndicator());
-        }
-
-        if (_categories.isEmpty) {
-          return const Center(
-            child: Text(
-              'No categories found',
-              style: TextStyle(fontSize: 18),
-            ),
-          );
-        }
-
-        return ListView.builder(
-          padding: const EdgeInsets.all(16),
-          itemCount: _categories.length,
-          itemBuilder: (context, index) {
-            final category = _categories[index];
-            return Card(
-              margin: const EdgeInsets.only(bottom: 16),
-              elevation: 2,
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Row(
-                  children: [
-                    // Category image or icon
-                    Container(
-                      width: 80,
-                      height: 80,
-                      decoration: BoxDecoration(
-                        color: Colors.grey[200],
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: _buildCategoryImage(category.imageUrl),
-                    ),
-                    const SizedBox(width: 16),
-                    // Category info
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            category.name,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 16,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            category.description,
-                            style: TextStyle(
-                              color: Colors.grey[700],
-                              fontSize: 14,
-                            ),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ],
-                      ),
-                    ),
-                    // Action buttons
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        IconButton(
-                          icon: const Icon(Icons.edit),
-                          onPressed: () async {
-                            await Get.toNamed(
-                              '/admin/category/form',
-                              arguments: category.id,
-                            );
-                            _loadCategories();
-                          },
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.delete, color: Colors.red),
-                          onPressed: () => _deleteCategory(category.id),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            );
-          },
-        );
-      }),
     );
   }
 } 

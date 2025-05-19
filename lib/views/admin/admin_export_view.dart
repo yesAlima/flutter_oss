@@ -1,140 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import '../../services/analytics_service.dart';
-import '../../services/export_service.dart';
+import '../../controllers/admin/admin_export_controller.dart';
 
-class AdminExportView extends StatefulWidget {
+class AdminExportView extends GetView<AdminExportController> {
   const AdminExportView({Key? key}) : super(key: key);
-
-  @override
-  State<AdminExportView> createState() => _AdminExportViewState();
-}
-
-class _AdminExportViewState extends State<AdminExportView> {
-  final _analyticsService = Get.find<AnalyticsService>();
-  final _exportService = Get.find<ExportService>();
-  bool _isLoading = false;
-  DateTime? _startDate;
-  DateTime? _endDate;
-  String _selectedFormat = 'CSV';
-  final List<String> _formats = ['CSV', 'Excel', 'PDF'];
-
-  Future<void> _selectDateRange() async {
-    final DateTimeRange? picked = await showDateRangePicker(
-      context: context,
-      firstDate: DateTime(2020),
-      lastDate: DateTime.now(),
-      initialDateRange: _startDate != null && _endDate != null
-          ? DateTimeRange(start: _startDate!, end: _endDate!)
-          : null,
-    );
-
-    if (picked != null) {
-      setState(() {
-        _startDate = picked.start;
-        _endDate = picked.end;
-      });
-    }
-  }
-
-  Future<void> _exportOrders() async {
-    setState(() => _isLoading = true);
-    try {
-      switch (_selectedFormat) {
-        case 'CSV':
-          await _analyticsService.exportOrdersToCSV();
-          break;
-        case 'Excel':
-          await _exportService.exportOrdersToExcel(
-            startDate: _startDate,
-            endDate: _endDate,
-          );
-          break;
-        case 'PDF':
-          await _exportService.exportOrdersToPdf(
-            startDate: _startDate,
-            endDate: _endDate,
-          );
-          break;
-      }
-      Get.snackbar('Success', 'Orders exported successfully');
-    } catch (e) {
-      Get.snackbar('Error', 'Failed to export orders: $e');
-    } finally {
-      setState(() => _isLoading = false);
-    }
-  }
-
-  Future<void> _exportProducts() async {
-    setState(() => _isLoading = true);
-    try {
-      switch (_selectedFormat) {
-        case 'CSV':
-          await _analyticsService.exportProductsToCSV();
-          break;
-        case 'Excel':
-          await _exportService.exportProductsToExcel();
-          break;
-        case 'PDF':
-          await _exportService.exportProductsToPdf();
-          break;
-      }
-      Get.snackbar('Success', 'Products exported successfully');
-    } catch (e) {
-      Get.snackbar('Error', 'Failed to export products: $e');
-    } finally {
-      setState(() => _isLoading = false);
-    }
-  }
-
-  Future<void> _exportUsers() async {
-    setState(() => _isLoading = true);
-    try {
-      switch (_selectedFormat) {
-        case 'CSV':
-          await _analyticsService.exportUsersToCSV();
-          break;
-        case 'Excel':
-          await _exportService.exportUsersToExcel();
-          break;
-        case 'PDF':
-          await _exportService.exportUsersToPdf();
-          break;
-      }
-      Get.snackbar('Success', 'Users exported successfully');
-    } catch (e) {
-      Get.snackbar('Error', 'Failed to export users: $e');
-    } finally {
-      setState(() => _isLoading = false);
-    }
-  }
-
-  Future<void> _exportAnalytics() async {
-    setState(() => _isLoading = true);
-    try {
-      final analytics = await _analyticsService.exportAnalytics(
-        type: 'sales',
-        startDate: _startDate,
-        endDate: _endDate,
-      );
-      switch (_selectedFormat) {
-        case 'CSV':
-          await _exportService.exportToCsv('analytics_report.csv', analytics);
-          break;
-        case 'Excel':
-          await _exportService.exportAnalyticsToExcel(analytics);
-          break;
-        case 'PDF':
-          await _exportService.exportAnalyticsToPdf(analytics);
-          break;
-      }
-      Get.snackbar('Success', 'Analytics exported successfully');
-    } catch (e) {
-      Get.snackbar('Error', 'Failed to export analytics: $e');
-    } finally {
-      setState(() => _isLoading = false);
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -142,7 +11,7 @@ class _AdminExportViewState extends State<AdminExportView> {
       appBar: AppBar(
         title: const Text('Export Data'),
       ),
-      body: _isLoading
+      body: Obx(() => controller.isLoading.value
           ? const Center(child: CircularProgressIndicator())
           : SingleChildScrollView(
               padding: const EdgeInsets.all(16),
@@ -167,12 +36,12 @@ class _AdminExportViewState extends State<AdminExportView> {
                             children: [
                               Expanded(
                                 child: DropdownButtonFormField<String>(
-                                  value: _selectedFormat,
+                                  value: controller.selectedFormat.value,
                                   decoration: const InputDecoration(
                                     labelText: 'Format',
                                     border: OutlineInputBorder(),
                                   ),
-                                  items: _formats.map((String format) {
+                                  items: controller.formats.map((String format) {
                                     return DropdownMenuItem<String>(
                                       value: format,
                                       child: Text(format),
@@ -180,22 +49,82 @@ class _AdminExportViewState extends State<AdminExportView> {
                                   }).toList(),
                                   onChanged: (String? newValue) {
                                     if (newValue != null) {
-                                      setState(() => _selectedFormat = newValue);
+                                      controller.setFormat(newValue);
                                     }
                                   },
                                 ),
                               ),
                               const SizedBox(width: 16),
                               Expanded(
-                                child: OutlinedButton.icon(
-                                  onPressed: _selectDateRange,
-                                  icon: const Icon(Icons.calendar_today),
-                                  label: Text(
-                                    _startDate != null && _endDate != null
-                                        ? '${_startDate!.day}/${_startDate!.month} - ${_endDate!.day}/${_endDate!.month}'
-                                        : 'Select Date Range',
-                                  ),
-                                ),
+                                child: Obx(() {
+                                  final start = controller.startDate.value;
+                                  final end = controller.endDate.value;
+                                  final minDate = controller.minDate ?? DateTime(2020, 1, 1);
+                                  final maxDate = controller.maxDate ?? DateTime.now();
+                                  return Row(
+                                    children: [
+                                      const Text('From:', style: TextStyle(fontWeight: FontWeight.bold)),
+                                      const SizedBox(width: 8),
+                                      InkWell(
+                                        onTap: () async {
+                                          final picked = await showDatePicker(
+                                            context: context,
+                                            initialDate: start ?? minDate,
+                                            firstDate: minDate,
+                                            lastDate: maxDate,
+                                          );
+                                          if (picked != null) {
+                                            controller.setStartDate(DateTime(picked.year, picked.month, picked.day, 0, 0));
+                                          }
+                                        },
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                          decoration: BoxDecoration(
+                                            color: Colors.white,
+                                            borderRadius: BorderRadius.circular(6),
+                                            border: Border.all(color: Colors.grey[300]!),
+                                          ),
+                                          child: Text(
+                                            start != null
+                                                ? '${start.year}-${start.month.toString().padLeft(2, '0')}-${start.day.toString().padLeft(2, '0')}'
+                                                : '-',
+                                            style: const TextStyle(fontWeight: FontWeight.bold),
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      const Text('To:', style: TextStyle(fontWeight: FontWeight.bold)),
+                                      const SizedBox(width: 8),
+                                      InkWell(
+                                        onTap: () async {
+                                          final picked = await showDatePicker(
+                                            context: context,
+                                            initialDate: end ?? maxDate,
+                                            firstDate: minDate,
+                                            lastDate: maxDate,
+                                          );
+                                          if (picked != null) {
+                                            controller.setEndDate(DateTime(picked.year, picked.month, picked.day, 23, 59));
+                                          }
+                                        },
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                          decoration: BoxDecoration(
+                                            color: Colors.white,
+                                            borderRadius: BorderRadius.circular(6),
+                                            border: Border.all(color: Colors.grey[300]!),
+                                          ),
+                                          child: Text(
+                                            end != null
+                                                ? '${end.year}-${end.month.toString().padLeft(2, '0')}-${end.day.toString().padLeft(2, '0')}'
+                                                : '-',
+                                            style: const TextStyle(fontWeight: FontWeight.bold),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  );
+                                }),
                               ),
                             ],
                           ),
@@ -204,59 +133,80 @@ class _AdminExportViewState extends State<AdminExportView> {
                     ),
                   ),
                   const SizedBox(height: 24),
-                  _buildExportCard(
-                    'Export Orders',
-                    'Download all orders data with detailed information',
-                    Icons.shopping_cart,
-                    _exportOrders,
+                  const Text(
+                    'Export Data',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                   const SizedBox(height: 16),
-                  _buildExportCard(
-                    'Export Products',
-                    'Download complete product catalog with inventory status',
-                    Icons.inventory,
-                    _exportProducts,
-                  ),
-                  const SizedBox(height: 16),
-                  _buildExportCard(
-                    'Export Users',
-                    'Download user database with roles and activity status',
-                    Icons.people,
-                    _exportUsers,
-                  ),
-                  const SizedBox(height: 16),
-                  _buildExportCard(
-                    'Export Analytics',
-                    'Download comprehensive sales and performance analytics',
-                    Icons.analytics,
-                    _exportAnalytics,
+                  GridView.count(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    crossAxisCount: 4,
+                    mainAxisSpacing: 16,
+                    crossAxisSpacing: 16,
+                    childAspectRatio: 1.5,
+                    children: [
+                      _buildExportCard(
+                        title: 'Orders',
+                        icon: Icons.shopping_cart,
+                        color: Colors.blue,
+                        onTap: controller.exportOrders,
+                      ),
+                      _buildExportCard(
+                        title: 'Products',
+                        icon: Icons.inventory,
+                        color: Colors.green,
+                        onTap: controller.exportProducts,
+                      ),
+                      _buildExportCard(
+                        title: 'Users',
+                        icon: Icons.people,
+                        color: Colors.orange,
+                        onTap: controller.exportUsers,
+                      ),
+                      _buildExportCard(
+                        title: 'Analytics',
+                        icon: Icons.analytics,
+                        color: Colors.purple,
+                        onTap: controller.exportAnalytics,
+                      ),
+                    ],
                   ),
                 ],
               ),
-            ),
+            )),
     );
   }
 
-  Widget _buildExportCard(
-    String title,
-    String subtitle,
-    IconData icon,
-    VoidCallback onTap,
-  ) {
+  Widget _buildExportCard({
+    required String title,
+    required IconData icon,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
     return Card(
-      child: ListTile(
-        leading: Icon(icon, size: 32),
-        title: Text(title),
-        subtitle: Text(subtitle),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(_selectedFormat),
-            const SizedBox(width: 8),
-            const Icon(Icons.download),
-          ],
-        ),
+      child: InkWell(
         onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, size: 48, color: color),
+              const SizedBox(height: 8),
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

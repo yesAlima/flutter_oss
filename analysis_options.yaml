@@ -9,15 +9,10 @@
 # packages, and plugins designed to encourage good coding practices.
 analyzer:
   errors:
-    unused_import: ignore
-    unused_field: ignore
-    unused_element: ignore
-    avoid_types_as_parameter_names: ignore
     must_be_immutable: ignore
     unused_local_variable: ignore
     use_build_context_synchronously: ignore
     avoid_print: ignore
-    duplicate_ignore: ignore
     invalid_use_of_protected_member: ignore
     curly_braces_in_flow_control_structures: ignore
 include: package:flutter_lints/flutter.yaml
